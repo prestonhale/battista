@@ -1,7 +1,7 @@
 use std::io::{stdin,stdout,Write};
 use std::collections::HashMap;
 
-use rusoto_dynamodb::{DynamoDbClient, DynamoDb, PutItemInput, AttributeValue};
+use rusoto_dynamodb::{DynamoDbClient, DynamoDb, PutItemInput, GetItemInput, AttributeValue};
 use rusoto_core::{Region};
 
 fn main() {
@@ -14,7 +14,7 @@ fn main() {
 
         let input = get_input(String::from("> "));
         match &input[..] {
-            "1" => println!("Get selected"),
+            "1" => get_message(),
             "2" => write_message(),
             "3" => finished = true,
             _ => println!("Invalid selection")
@@ -73,6 +73,49 @@ async fn write_message(){
     };
     match dynamo_client.put_item(dynamo_put_input).await {
         Ok(_) => println!("Message sent!"),
+        Err(error) => {
+            println!("Error: {:?}", error);
+        }
+    }
+}
+
+#[tokio::main]
+async fn get_message(){
+    let dynamo_client = DynamoDbClient::new(Region::UsWest2);
+    let mut key = HashMap::new();
+    key.insert(
+        String::from("user"),
+        AttributeValue{
+            b: None, 
+            bs: None, 
+            bool: None, 
+            l: None, 
+            m: None,
+            n: None,
+            ns: None,
+            null: None,
+            s: Some(String::from("preston")),
+            ss: None,
+        },
+    );
+    let dynamo_get_input = GetItemInput{
+        attributes_to_get: None,
+        consistent_read: None,
+        expression_attribute_names: None,
+        key: key,
+        projection_expression: None,
+        return_consumed_capacity: None,
+        table_name: String::from("messages"),
+    };
+    match dynamo_client.get_item(dynamo_get_input).await {
+        Ok(output) => match output.item{
+            Some(item) => {
+                println!("You've got mail: ");
+                let message = &item["message"]; // null check?
+                println!("{}", message.s.as_ref().expect("Found dynamo message but was not string type!"));
+            },
+            None => println!("No mail yet!"),
+        }
         Err(error) => {
             println!("Error: {:?}", error);
         }
