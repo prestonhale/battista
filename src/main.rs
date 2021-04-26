@@ -35,58 +35,46 @@ async fn write_message(user_id: &String){
     println!("Write your message: ");
     let input = get_input(String::from("> "));
 
-    // Insert the message
     let dynamo_client = DynamoDbClient::new(Region::UsWest2);
     let message_id = Uuid::new_v4();
-    let mut item = HashMap::new();
-    item.insert(
-        String::from("message_id"),
-        AttributeValue{
-            s: Some(message_id.to_string()),
-            ..Default::default()
-        },
-    );
-    item.insert(
-        String::from("message"),
-        AttributeValue{
-            s: Some(String::from(input)),
-            ..Default::default()
-        },
-    );
-    let dynamo_put_input = PutItemInput{
-        item: item,
-        table_name: String::from("messages"),
-        ..Default::default()
-    };
-    match dynamo_client.put_item(dynamo_put_input).await {
-        Ok(_) => println!("Message saved!"),
-        Err(error) => {
-            println!("Error: {:?}", error);
-        }
-    }
 
     // Update the player's list of available messages
     let mut key = HashMap::new();
     key.insert(
-        String::from("user_id"),
+        String::from("PK"),
         AttributeValue{
-            s: Some(user_id.clone()),
+            s: Some(format!("USER#{}", user_id.clone())),
+            ..Default::default()
+        },
+    );
+    key.insert(
+        String::from("SK"),
+        AttributeValue{
+            s: Some(format!("MSG#{}", message_id.to_string())),
             ..Default::default()
         },
     );
     let mut expression_attribute_values = HashMap::new();
     expression_attribute_values.insert(
-        String::from(":new_message_id"),
+        String::from(":new_message"),
         AttributeValue{
-            ss: Some(vec!(message_id.to_string())),
+            s: Some(input.to_string()),
+            ..Default::default()
+        },
+    );
+    expression_attribute_values.insert(
+        String::from(":read"),
+        AttributeValue{
+            s: Some(String::from("f")),
             ..Default::default()
         },
     );
     let update_input = UpdateItemInput{
         key: key,
-        update_expression: Some(String::from("ADD available_messages :new_message_id")),
+        update_expression: Some(String::from("
+            SET message = :new_message, GSI1PK = :read")),
         expression_attribute_values: Some(expression_attribute_values),
-        table_name: String::from("available_messages"),
+        table_name: String::from("messages"),
         ..Default::default()
     };
     match dynamo_client.update_item(update_input).await {
