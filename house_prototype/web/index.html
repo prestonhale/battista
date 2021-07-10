@@ -64,6 +64,7 @@
             exploredRoomsCostHalf: true,
             activelyGatherFromRooms: true,
             randomWallAlgo: true,
+            mazeAlgo200: true,
         }
 
         // Rooms
@@ -117,15 +118,17 @@
         14 wne
         */
 
-        let wallsWithoutNorth = [2, 3, 4, 6, 7, 10, 12]
-        let wallsWithoutEast =  [1, 3, 4, 7, 8, 9, 13];
-        let wallsWithoutSouth = [1, 2, 4, 5, 8, 10, 14]
-        let wallsWithoutWest = [1, 2, 3, 5, 6, 9, 11]
+        let wallsWithoutNorth = [0, 2, 3, 4, 6, 7, 10, 12]
+        let wallsWithoutEast =  [0, 1, 3, 4, 7, 8, 9, 13];
+        let wallsWithoutSouth = [0, 1, 2, 4, 5, 8, 10, 14]
+        let wallsWithoutWest = [0, 1, 2, 3, 5, 6, 9, 11]
 
         let wallsWithNorth = [1, 5, 8, 9, 11, 13, 14];
         let wallsWithEast = [2, 5, 6, 10, 11, 12, 14];
         let wallsWithSouth = [3, 6, 7, 9, 12, 13];
         let wallsWithWest = [4, 7, 8, 10, 12, 13];
+
+        let openExitsToMaintain = 4;
 
         let roomWalls = []
 
@@ -160,6 +163,12 @@
             var handled = false;
             if (e.key !== undefined) {
                 handled = true;
+
+                // For maze debugging
+                if (e.key == "?"){
+                    walkMaze();
+                }
+
                 if (playerState == playerStates.CRAFTING){
                     if(e.key == "Enter" || e.key == " "){
                         craftSelection();
@@ -215,6 +224,16 @@
             render();
         }
 
+        function walkMaze() {
+            let directions = ["up", "down", "left", "right"];
+            playerResourceTimeRemaining = 100000;
+            for (let i = 0; i < 100; ++i){
+                let direction = directions[Math.floor(Math.random() * directions.length)];
+                handleMovement(direction);
+            }
+            render();
+        }
+
         function resetHouse (){
             discoveredRooms = []
             playerX = Math.floor(width/2);
@@ -237,6 +256,10 @@
                 }
             }
 
+            if (features.mazeAlgo200){
+                openExitsThisRun = openExitsSaved;
+            }
+
             playerResourceTimeRemaining = defaultTimeRemaining;
             // resetAnimation();
         }
@@ -256,6 +279,11 @@
                     }
                 }
             }
+
+            if (features.mazeAlgo200) {
+                openExitsSaved = openExitsThisRun;
+            }            
+
             resetHouse();
         }
 
@@ -304,43 +332,45 @@
             return roomColors[lastIndex];
         }
 
-        function getRandomRoomWalls(direction){
-            let randNum = Math.random();
-
-            let curWalls = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+        function getRandomRoomWalls(direction, openExitsThisRun){
+            let curWalls = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
 
             if (features.randomWallAlgo){
                 let roomIndex;
                 roomIndex = getIndexFromCoords(playerX, playerY - 1);
-                if (
-                    discoveredRooms[roomIndex] !== null
-                    && wallsWithSouth.includes(roomWalls[roomIndex])
-                ){
-                    curWalls = curWalls.filter(value => wallsWithNorth.includes(value));
+                if (discoveredRooms[roomIndex]){
+                    if (wallsWithSouth.includes(roomWalls[roomIndex])){
+                        curWalls = curWalls.filter(value => wallsWithNorth.includes(value));
+                    } else {
+                        curWalls = curWalls.filter(value => wallsWithoutNorth.includes(value));
+                    }
                 }
 
                 roomIndex = getIndexFromCoords(playerX + 1, playerY);
-                if (
-                    discoveredRooms[roomIndex] !== null
-                    && wallsWithWest.includes(roomWalls[roomIndex])
-                ){
-                    curWalls = curWalls.filter(value => wallsWithEast.includes(value));
+                if (discoveredRooms[roomIndex]){
+                    if (wallsWithWest.includes(roomWalls[roomIndex])) {
+                        curWalls = curWalls.filter(value => wallsWithEast.includes(value));
+                    } else {
+                        curWalls = curWalls.filter(value => wallsWithoutEast.includes(value));
+                    }
                 }
                 
                 roomIndex = getIndexFromCoords(playerX, playerY + 1);
-                if (
-                    discoveredRooms[roomIndex] !== null
-                    && wallsWithNorth.includes(roomWalls[roomIndex])
-                ){
-                    curWalls = curWalls.filter(value => wallsWithSouth.includes(value));
+                if (discoveredRooms[roomIndex]) {
+                    if (wallsWithNorth.includes(roomWalls[roomIndex])){
+                        curWalls = curWalls.filter(value => wallsWithSouth.includes(value));
+                    } else {
+                        curWalls = curWalls.filter(value => wallsWithoutSouth.includes(value));
+                    }
                 }
                 
                 roomIndex = getIndexFromCoords(playerX - 1, playerY);
-                if (
-                    discoveredRooms[roomIndex] !== null
-                    && wallsWithEast.includes(roomWalls[roomIndex])
-                ){
-                    curWalls = curWalls.filter(value => wallsWithWest.includes(value));
+                if (discoveredRooms[roomIndex]){
+                    if (wallsWithEast.includes(roomWalls[roomIndex])){
+                        curWalls = curWalls.filter(value => wallsWithWest.includes(value));
+                    } else {
+                        curWalls = curWalls.filter(value => wallsWithoutWest.includes(value));
+                    }
                 }
             }
 
@@ -356,7 +386,12 @@
             }
             curWalls = curWalls.filter(value => withoutFilter.includes(value));
 
-            return curWalls[Math.floor(randNum * curWalls.length)]
+            if (openExitsThisRun !== null && openExitsToMaintain - openExitsThisRun <= 1) {
+                let nonDeadEndWallArrangements = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+                curWalls.filter(value => nonDeadEndWallArrangements.includes(value))
+            }
+
+            return curWalls[Math.floor(Math.random() * curWalls.length)]
         }
 
         function getIndexFromCoords(x, y){
@@ -412,22 +447,26 @@
             let newRoom = color == null;
             if (newRoom) {
 
-                color = getRandomRoomColor();
-                discoveredRooms[newRoomIndex] = color;
-                
-                if (features.randomWallAlgo){
-                    roomWalls[newRoomIndex] = getRandomRoomWalls(direction);
-                }
-
-                playerResourceTimeRemaining -= 2;
-                if (playerResourceTimeRemaining < 0 && playerResourceFood > 0){
-                    --playerResourceFood;
-                    playerResourceTimeRemaining = 0;
-                }
-                if (roomColorNames[color] == "grey"){
-                    roomRemainingResources[newRoomIndex] = 0;
+                if (features.mazeAlgo200){
+                    getNewRoom200(direction)
                 } else {
-                    roomRemainingResources[newRoomIndex] = defaultRoomResources;
+                    color = getRandomRoomColor();
+                    discoveredRooms[newRoomIndex] = color;
+                    
+                    if (features.randomWallAlgo){
+                        roomWalls[newRoomIndex] = getRandomRoomWalls(direction);
+                    }
+
+                    playerResourceTimeRemaining -= 2;
+                    if (playerResourceTimeRemaining < 0 && playerResourceFood > 0){
+                        --playerResourceFood;
+                        playerResourceTimeRemaining = 0;
+                    }
+                    if (roomColorNames[color] == "grey"){
+                        roomRemainingResources[newRoomIndex] = 0;
+                    } else {
+                        roomRemainingResources[newRoomIndex] = defaultRoomResources;
+                    }
                 }
             } else {
                 if (features.exploredRoomsCostHalf) {
@@ -449,7 +488,55 @@
                 }
             }
 
-            console.log("Player moved to: " + playerX + ", " + playerY + ". Color: " + color);
+            console.log(`Player moved to: [${playerX}, ${playerY}]. Open Exits: ${openExitsThisRun}.`);
+        }
+
+        let openExitsSaved = 4;
+        let openExitsThisRun = 4;
+
+        function getNewRoom200(direction){
+            let newRoomIndex = getIndexFromCoords(playerX, playerY);
+            let color = getRandomRoomColor();
+            discoveredRooms[newRoomIndex] = color;
+
+            // How many NEW exits are created by a wall arrangement
+            // Creating a room will REMOVE an open exit from the room you came from
+            // for this reason wall types with 2 exits add 0 new exits they just maintain
+            // the same number of open exits and rooms with 1 exit SUBTRACT 1 exit.
+            let exitsByWallType = new Map([
+                [0, 2],
+                [1, 1],
+                [2, 1],
+                [3, 1],
+                [4, 1],
+                [5, 0],
+                [6, 0],
+                [7, 0],
+                [8, 0],
+                [9, 0],
+                [10, 0],
+                [11, -1],
+                [12, -1],
+                [13, -1],
+                [14, -1]
+            ])
+
+            if (features.randomWallAlgo){
+                let walls = getRandomRoomWalls(direction, openExitsThisRun);
+                roomWalls[newRoomIndex] = walls
+                openExitsThisRun += exitsByWallType.get(walls);
+            }
+
+            playerResourceTimeRemaining -= 2;
+            if (playerResourceTimeRemaining < 0 && playerResourceFood > 0){
+                --playerResourceFood;
+                playerResourceTimeRemaining = 0;
+            }
+            if (roomColorNames[color] == "grey"){
+                roomRemainingResources[newRoomIndex] = 0;
+            } else {
+                roomRemainingResources[newRoomIndex] = defaultRoomResources;
+            }
         }
 
         function craftSelection(){
@@ -564,6 +651,7 @@
             // Draw walls
             if (features.randomWallAlgo) {
                 ctx.strokeStyle = "black"
+                ctx.lineWidth = 3;
                 ctx.beginPath()
 
                 // Top Wall
