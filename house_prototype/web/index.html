@@ -420,6 +420,10 @@
                 }
 
                 playerResourceTimeRemaining -= 2;
+                if (playerResourceTimeRemaining < 0 && playerResourceFood > 0){
+                    --playerResourceFood;
+                    playerResourceTimeRemaining = 0;
+                }
                 if (roomColorNames[color] == "grey"){
                     roomRemainingResources[newRoomIndex] = 0;
                 } else {
