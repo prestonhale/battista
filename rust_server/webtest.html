@@ -1,0 +1,205 @@
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>Battista</title>
+        <link href='http://fonts.googleapis.com/css?family=Buenard' rel='stylesheet' type='text/css'>
+        <style>
+            canvas { border: 1px solid black; }
+        </style>
+    </head>
+    <body onload="main()"">
+        <canvas id="game"></canvas>
+        <div id="game"></div>
+        <!-- TODO: Figure out how to link to this. -->
+        <!--<p><a href="getting-started.html" target="_blank">How to Play</a></p>-->
+    </body>
+    <script type="application/javascript">
+        let width = 25;
+        let height = 25;
+        let playerPosition = {x: 10, y: 10};
+        let discoveredRooms = [];
+
+        function main(){
+            registerUser()
+            .then(data => {
+                console.log(`User id 1 registered with websocket uuid: ${data.id}`);
+
+                playerPosition = data.player_position;
+                discoveredRooms[getIndexFromCoords(playerPosition)] = {"color": "black"}
+                for (const property in data.explored_cells){
+                    discoveredRooms[property] = data.explored_cells[property]
+                }
+
+                render();
+
+                let move_id;
+
+                const socket = new WebSocket(data.url);
+                socket.addEventListener('message', data =>{
+                    console.log(`Received: ${data.data}`);
+                    data = JSON.parse(data.data);
+                    if (move_id) {
+                        discoveredRooms[getIndexFromCoords(playerPosition)] = data.cell
+                        move_id = null;
+                    }
+                    render();
+                })
+                
+
+                function keyHandler(e) {
+                    var handled = false;
+                    if (e.key !== undefined) {
+                        handled = true;
+
+                        if(e.key == "Right" || e.key == "ArrowRight" || e.key == "d") {
+                            move_id = 2;
+                            playerPosition = {x: playerPosition.x + 1, y: playerPosition.y};
+                            socket.send(JSON.stringify({
+                                input: "e",
+                            }))
+                        }
+                        if(e.key == "Left" || e.key == "ArrowLeft" || e.key == "a") {
+                            move_id = 2;
+                            playerPosition = {x: playerPosition.x - 1, y: playerPosition.y};
+                            socket.send(JSON.stringify({
+                                input: "w",
+                            }))
+                        }
+                        if(e.key == "Up" || e.key == "ArrowUp" || e.key == "w") {
+                            move_id = 2;
+                            playerPosition = {x: playerPosition.x, y: playerPosition.y - 1};
+                            socket.send(JSON.stringify({
+                                input: "n",
+                            }))
+                        }
+                        if(e.key == "Down" || e.key == "ArrowDown" || e.key == "s") {
+                            move_id = 2;
+                            playerPosition = {x: playerPosition.x, y: playerPosition.y + 1};
+                            socket.send(JSON.stringify({
+                                input: "s",
+                            }))
+                        }
+                        if (e.key == "r") {
+                            resetHouse();
+                        }
+                        if (e.key == "x") {
+                            pinPath();
+                        }
+                        if (e.key == "c") {
+                            startCrafting();
+                        }
+                        if (e.key == " "){
+                            if (features.activelyGatherFromRooms){
+                                gatherRoom();
+                            }
+                        }
+                    }
+
+                    if (handled) {
+                        event.preventDefault();
+                    }
+
+                    render();
+                }
+
+                document.addEventListener("keydown", keyHandler, false);
+            })
+        }
+
+        function getIndexFromCoords(coords) {
+            return coords.y * width + coords.x;
+        }
+
+        async function registerUser(){
+            const registerUrl = 'http://localhost:8000/register';
+
+            const headers = new Headers({
+                'Content-Type': 'application/json'
+            })
+            const response = await fetch(registerUrl, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify({user_id: 1})
+            });
+            return response.json();
+        }
+
+
+
+        // Rendering
+        const canvas = document.getElementById('game')
+        var ctx = canvas.getContext('2d');
+        const roomSize = 20;
+
+        canvas.height = height * (roomSize + 1);
+        canvas.width = height * (roomSize + 1);
+
+        function getCoordsFromIndex(i){
+            let y;
+            if (i < width) {
+                y = 0
+                x = i;
+            } else {
+                y = Math.floor(i/width)
+                x = i % (width * y);
+            }
+            return [x, y];
+        } 
+
+        function render(){
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let i = 0; i < discoveredRooms.length; ++i) {
+                if (discoveredRooms[i] != null){
+                    drawRoom(i);
+                }
+            }
+        }
+
+        function drawRoom(i){
+            let coords = getCoordsFromIndex(i);
+            let x = coords[0];
+            let y = coords[1];
+
+            let leftX = 1 + (x * roomSize + (x * 2));
+            let rightX = 1 + (x * roomSize + (x * 2)) + roomSize;
+            let topY = 1 + (y * (roomSize) + (y * 2));
+            let bottomY = 1 + (y * (roomSize) + (y * 2)) + roomSize;
+            color = discoveredRooms[i].color;
+
+            ctx.beginPath();
+            ctx.fillStyle = color;
+            ctx.fillRect(
+                leftX,
+                topY,
+                roomSize,
+                roomSize
+            );
+            ctx.stroke();
+
+            // for (let i = 0; i < cell.edges.length; ++i) {
+            // ctx.beginPath()
+            // let edge = cell.edges[i]
+            // if (edge.type == edgeTypes.WALL) {
+            //     ctx.strokeStyle = "grey";
+            //     let buffer = 3
+            //     ctx.lineWidth=2;
+            //     if (edge.direction == mazeDirection.NORTH) {
+            //         ctx.moveTo(leftX - buffer, topY);
+            //         ctx.lineTo(rightX + buffer, topY);
+            //     } else if (edge.direction == mazeDirection.EAST) {
+            //         ctx.moveTo(rightX, topY - buffer);
+            //         ctx.lineTo(rightX, bottomY + buffer);
+            //     } else if (edge.direction == mazeDirection.SOUTH) {
+            //         ctx.moveTo(rightX + buffer, bottomY);
+            //         ctx.lineTo(leftX - buffer, bottomY);
+            //     } else if (edge.direction == mazeDirection.WEST) {
+            //         ctx.moveTo(leftX, bottomY + buffer);
+            //         ctx.lineTo(leftX, topY - buffer);
+            //     }
+            // }
+            // ctx.stroke();
+        // }
+        }
+    </script>
+</html>
+    

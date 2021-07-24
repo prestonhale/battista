@@ -65,6 +65,7 @@
             activelyGatherFromRooms: true,
             randomWallAlgo: true,
             mazeAlgo200: true,
+            theming: true,
         }
 
         // Rooms
@@ -91,14 +92,30 @@
             0.05,
         ]
 
+        // Themes
+        let themes = {
+            HOUSE: "house",
+            FOREST: "forest",
+            MUSHROOM: "mushroom",
+            FLOODED: "flooded"
+        }
+
+        let themeToColor = new Map();
+        themeToColor.set(themes.HOUSE, "#bfbfbf");
+        themeToColor.set(themes.FOREST, "#006600");
+        themeToColor.set(themes.MUSHROOM, "#800000");
+        themeToColor.set(themes.FLOODED, "#000099");
+
         // Config
-        let defaultTimeRemaining = 12;
+        let defaultTimeRemaining = 120;
         let defaultRoomResources = 3;
+        let doorChance = 0.1;
 
         // Room details
         let discoveredRooms = [];
         let pinnedRooms = [];
         let pinnedWalls = [];
+        let pinnedRoomThemes = [];
         let roomRemainingResources = [];
         /* 
         0 none
@@ -130,7 +147,9 @@
 
         let openExitsToMaintain = 4;
 
-        let roomWalls = []
+        let roomWalls = [];
+        let roomDoors = [];
+        let roomThemes = [];
 
         let playerX = Math.floor(height/2);
         let playerY = Math.floor(width/2);
@@ -146,7 +165,7 @@
         discoveredRooms[startRoomIndex] = roomColors[0];
         pinnedRooms[startRoomIndex] = roomColors[0];
         roomWalls[startRoomIndex] = 0;
-
+        roomThemes[startRoomIndex] = themes.HOUSE;
 
         let animating = false;
 
@@ -244,6 +263,11 @@
                 roomWalls = [];
                 roomWalls = [...pinnedWalls];
             }
+            
+            if (features.theming) {
+                roomThemes = [];
+                roomThemes = [...pinnedRoomThemes];
+            }
 
             if (features.activelyGatherFromRooms){
                 roomRemainingResources = [];
@@ -282,7 +306,15 @@
 
             if (features.mazeAlgo200) {
                 openExitsSaved = openExitsThisRun;
-            }            
+            }
+            
+            if (features.theming) {
+                for (let i = 0; i < roomThemes.length; ++i){
+                    if (roomThemes[i] !== null){
+                        pinnedRoomThemes[i] = roomThemes[i];
+                    }
+                }
+            }
 
             resetHouse();
         }
@@ -488,7 +520,37 @@
                 }
             }
 
-            console.log(`Player moved to: [${playerX}, ${playerY}]. Open Exits: ${openExitsThisRun}.`);
+            console.log(`Player moved to: [${playerX}, ${playerY}]. Open Exits: ${openExitsThisRun}. Theme: ${roomThemes[newRoomIndex]}`);
+        }
+
+        function getCoordInDirection(x, y, direction){
+            if (direction == "up") {
+                return {x: x, y: y - 1};
+            }
+            if (direction == "down") {
+                return {x: x, y: y + 1};
+            }
+            if (direction == "right") {
+                return {x: x + 1, y: y};
+            }
+            if (direction == "left") {
+                return {x: x - 1, y: y};
+            }
+        }
+
+        function getOppositeDirection(direction){
+            if (direction == "up") {
+                return "down"
+            }
+            if (direction == "down") {
+                return "up"
+            }
+            if (direction == "right") {
+                return "left"
+            }
+            if (direction == "left") {
+                return "right"
+            }
         }
 
         let openExitsSaved = 4;
@@ -496,7 +558,28 @@
 
         function getNewRoom200(direction){
             let newRoomIndex = getIndexFromCoords(playerX, playerY);
-            let color = getRandomRoomColor();
+            let color;
+            if (features.theming){
+                let oppositeDirection = getOppositeDirection(direction);
+                let prevCoord = getCoordInDirection(playerX, playerY, oppositeDirection);
+                let previousRoomIndex = getIndexFromCoords(prevCoord.x, prevCoord.y);
+                let theme;
+                if (Math.random() < doorChance){ //Switch themes
+                    console.log("DOOR!");
+                    if (roomThemes[previousRoomIndex] !== themes.HOUSE){
+                        theme = themes.HOUSE;
+                    } else {
+                        theme = getRandomTheme();
+                        
+                    }
+                } else {
+                    theme = roomThemes[previousRoomIndex];
+                }
+                roomThemes[newRoomIndex] = theme;
+                color = themeToColor.get(theme);
+            } else {
+                color = getRandomRoomColor(); // aka getRandomNewTheme
+            }
             discoveredRooms[newRoomIndex] = color;
 
             // How many NEW exits are created by a wall arrangement
@@ -537,6 +620,11 @@
             } else {
                 roomRemainingResources[newRoomIndex] = defaultRoomResources;
             }
+        }
+
+        function getRandomTheme(){
+            let keys = Object.keys(themes);
+            return themes[keys[((keys.length - 1) * Math.random() <<0) + 1]];
         }
 
         function craftSelection(){
@@ -651,7 +739,7 @@
             // Draw walls
             if (features.randomWallAlgo) {
                 ctx.strokeStyle = "black"
-                ctx.lineWidth = 3;
+                ctx.lineWidth = 1;
                 ctx.beginPath()
 
                 // Top Wall
