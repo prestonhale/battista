@@ -15,6 +15,8 @@ pub struct RegisterResponse {
     url: String,
     player_position: map::Coords,
     explored_cells: HashMap<usize, map::Cell>,
+    width: usize,
+    height: usize
 }
 
 #[derive(Deserialize, Debug)]
@@ -60,10 +62,14 @@ pub async fn register_handler(body: RegisterRequest, clients: Clients, map_state
         explored_cells = map::get_explored_cells(&mut map_state_lock);
     }
 
+    let (width, height) = map::get_dimensions();
+
     Ok(json(&RegisterResponse {
         url: format!("ws://127.0.0.1:8000/ws/{}", uuid),
         player_position: player_coords.clone(),
         explored_cells: explored_cells,
+        height: height,
+        width: width
     }))
 }
 

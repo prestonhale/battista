@@ -8,24 +8,54 @@
         </style>
     </head>
     <body onload="main()"">
-        <canvas id="game"></canvas>
+        <form id="registration">
+            <input type="text" id = "username"></input>
+            <input type="submit"></input>
+        </form>
+        <div>
+            <canvas id="game"></canvas>
+        </div>
         <div id="game"></div>
         <!-- TODO: Figure out how to link to this. -->
         <!--<p><a href="getting-started.html" target="_blank">How to Play</a></p>-->
     </body>
     <script type="application/javascript">
-        let width = 25;
-        let height = 25;
-        let playerPosition = {x: 10, y: 10};
         let discoveredRooms = [];
+        let width;
+        let height;
+        let roomSize = 25;
+        let wallWidth = roomSize/10;
+        let player_position;
+
+        let edgeTypes = {
+            WALL: "Wall",
+            PASSAGE: "Passage",
+        }
 
         function main(){
-            registerUser()
+            document.getElementById('registration').addEventListener('submit', e => {
+                let username = document.getElementById('username').value;
+                console.log(username);
+                submit(username);
+                e.preventDefault();
+            })
+        }
+
+        function submit(username){
+            registerUser(username)
             .then(data => {
+                height = data.height;
+                width = data.width;
+
+                let canvas = document.getElementById('game');
+                // canvas.height = wallWidth + (height * (roomSize + wallWidth));
+                canvas.height = height * roomSize;
+                // canvas.width = wallWidth + (width * (roomSize + wallWidth));
+                canvas.width = width * roomSize;
+
                 console.log(`User id 1 registered with websocket uuid: ${data.id}`);
 
                 playerPosition = data.player_position;
-                discoveredRooms[getIndexFromCoords(playerPosition)] = {"color": "black"}
                 for (const property in data.explored_cells){
                     discoveredRooms[property] = data.explored_cells[property]
                 }
@@ -39,6 +69,8 @@
                     console.log(`Received: ${data.data}`);
                     data = JSON.parse(data.data);
                     if (move_id) {
+                        playerPosition = data.player_position;
+                        console.log(playerPosition);
                         discoveredRooms[getIndexFromCoords(playerPosition)] = data.cell
                         move_id = null;
                     }
@@ -53,28 +85,24 @@
 
                         if(e.key == "Right" || e.key == "ArrowRight" || e.key == "d") {
                             move_id = 2;
-                            playerPosition = {x: playerPosition.x + 1, y: playerPosition.y};
                             socket.send(JSON.stringify({
                                 input: "e",
                             }))
                         }
                         if(e.key == "Left" || e.key == "ArrowLeft" || e.key == "a") {
                             move_id = 2;
-                            playerPosition = {x: playerPosition.x - 1, y: playerPosition.y};
                             socket.send(JSON.stringify({
                                 input: "w",
                             }))
                         }
                         if(e.key == "Up" || e.key == "ArrowUp" || e.key == "w") {
                             move_id = 2;
-                            playerPosition = {x: playerPosition.x, y: playerPosition.y - 1};
                             socket.send(JSON.stringify({
                                 input: "n",
                             }))
                         }
                         if(e.key == "Down" || e.key == "ArrowDown" || e.key == "s") {
                             move_id = 2;
-                            playerPosition = {x: playerPosition.x, y: playerPosition.y + 1};
                             socket.send(JSON.stringify({
                                 input: "s",
                             }))
@@ -82,24 +110,13 @@
                         if (e.key == "r") {
                             resetHouse();
                         }
-                        if (e.key == "x") {
-                            pinPath();
-                        }
-                        if (e.key == "c") {
-                            startCrafting();
-                        }
-                        if (e.key == " "){
-                            if (features.activelyGatherFromRooms){
-                                gatherRoom();
-                            }
-                        }
+
                     }
 
                     if (handled) {
                         event.preventDefault();
                     }
 
-                    render();
                 }
 
                 document.addEventListener("keydown", keyHandler, false);
@@ -110,7 +127,7 @@
             return coords.y * width + coords.x;
         }
 
-        async function registerUser(){
+        async function registerUser(username){
             const registerUrl = 'http://localhost:8000/register';
 
             const headers = new Headers({
@@ -119,20 +136,27 @@
             const response = await fetch(registerUrl, {
                 method: 'POST',
                 headers: headers,
-                body: JSON.stringify({user_id: 1})
+                body: JSON.stringify({user_id: username.hashCode()})
             });
             return response.json();
         }
 
-
+        String.prototype.hashCode = function() {
+            var hash = 0, i, chr;
+            if (this.length === 0) return hash;
+            for (i = 0; i < this.length; i++) {
+                chr   = this.charCodeAt(i);
+                hash  = ((hash << 5) - hash) + chr;
+                hash |= 0; // Convert to 32bit integer
+                hash = hash >>> 0;
+            }
+            return hash;
+        };
 
         // Rendering
         const canvas = document.getElementById('game')
         var ctx = canvas.getContext('2d');
-        const roomSize = 20;
 
-        canvas.height = height * (roomSize + 1);
-        canvas.width = height * (roomSize + 1);
 
         function getCoordsFromIndex(i){
             let y;
@@ -146,13 +170,25 @@
             return [x, y];
         } 
 
-        function render(){
+        async function render(){
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             for (let i = 0; i < discoveredRooms.length; ++i) {
                 if (discoveredRooms[i] != null){
                     drawRoom(i);
                 }
             }
+
+            for (let i = 0; i < discoveredRooms.length; ++i) {
+                if (discoveredRooms[i] != null){
+                    drawWalls(i);
+                }
+            }
+
+            drawPlayer();
+        }
+
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
         }
 
         function drawRoom(i){
@@ -160,10 +196,10 @@
             let x = coords[0];
             let y = coords[1];
 
-            let leftX = 1 + (x * roomSize + (x * 2));
-            let rightX = 1 + (x * roomSize + (x * 2)) + roomSize;
-            let topY = 1 + (y * (roomSize) + (y * 2));
-            let bottomY = 1 + (y * (roomSize) + (y * 2)) + roomSize;
+            let leftX = x * roomSize;
+            let rightX = (x * roomSize) + roomSize;
+            let topY = y * roomSize;
+            let bottomY = (y * roomSize) + roomSize;
             color = discoveredRooms[i].color;
 
             ctx.beginPath();
@@ -175,30 +211,70 @@
                 roomSize
             );
             ctx.stroke();
+        }
 
-            // for (let i = 0; i < cell.edges.length; ++i) {
-            // ctx.beginPath()
-            // let edge = cell.edges[i]
-            // if (edge.type == edgeTypes.WALL) {
-            //     ctx.strokeStyle = "grey";
-            //     let buffer = 3
-            //     ctx.lineWidth=2;
-            //     if (edge.direction == mazeDirection.NORTH) {
-            //         ctx.moveTo(leftX - buffer, topY);
-            //         ctx.lineTo(rightX + buffer, topY);
-            //     } else if (edge.direction == mazeDirection.EAST) {
-            //         ctx.moveTo(rightX, topY - buffer);
-            //         ctx.lineTo(rightX, bottomY + buffer);
-            //     } else if (edge.direction == mazeDirection.SOUTH) {
-            //         ctx.moveTo(rightX + buffer, bottomY);
-            //         ctx.lineTo(leftX - buffer, bottomY);
-            //     } else if (edge.direction == mazeDirection.WEST) {
-            //         ctx.moveTo(leftX, bottomY + buffer);
-            //         ctx.lineTo(leftX, topY - buffer);
-            //     }
-            // }
-            // ctx.stroke();
-        // }
+        function drawWalls(i){
+            let coords = getCoordsFromIndex(i);
+            let x = coords[0];
+            let y = coords[1];
+
+            let leftX = x * roomSize;
+            let rightX = (x * roomSize) + roomSize;
+            let topY = y * roomSize;
+            let bottomY = (y * roomSize) + roomSize;
+            cell = discoveredRooms[i];
+
+            ctx.lineWidth=wallWidth;
+
+            ctx.beginPath()
+            ctx.strokeStyle = "black";
+            if (cell.edges.North == edgeTypes.WALL) {
+                ctx.moveTo(leftX, topY);
+                ctx.lineTo(rightX, topY);
+            };
+
+            if (cell.edges.East == edgeTypes.WALL) {
+                ctx.moveTo(rightX, topY);
+                ctx.lineTo(rightX, bottomY);
+            };
+
+            if (cell.edges.South == edgeTypes.WALL) {
+                ctx.moveTo(rightX, bottomY);
+                ctx.lineTo(leftX, bottomY);
+            };
+
+            if (cell.edges.West == edgeTypes.WALL) {
+                ctx.moveTo(leftX, bottomY);
+                ctx.lineTo(leftX, topY);
+            };
+
+            ctx.stroke();
+        }
+
+        function drawPlayer() {
+            let x = playerPosition.x;
+            let y = playerPosition.y;
+
+            let leftX = x * roomSize;
+            let rightX = (x * roomSize) + roomSize;
+            let topY = y * roomSize;
+            let bottomY = (y * roomSize) + roomSize;
+
+            // adjust
+            let shrink = roomSize/10
+            leftX += shrink;
+            topY += shrink;
+            color = "blue";
+
+            ctx.beginPath();
+            ctx.fillStyle = color;
+            ctx.fillRect(
+                leftX,
+                topY,
+                roomSize - shrink * 2,
+                roomSize - shrink * 2,
+            );
+            ctx.stroke();
         }
     </script>
 </html>
