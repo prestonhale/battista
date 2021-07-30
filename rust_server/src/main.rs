@@ -29,6 +29,11 @@ async fn main() {
     let map = map::generate_map();
     let map_lock = Arc::new(RwLock::new(map));
 
+    let (tx, mut rx) = mpsc::channel(32);
+    let map_manager = tokio::spawn(async move {
+        map::map_manager(rx)
+    });
+
     let player_states = map::generate_player_states();
     let player_states_lock = Arc::new(RwLock::new(player_states));
     
@@ -42,8 +47,7 @@ async fn main() {
         .and(warp::post())
         .and(warp::body::json())
         .and(with_clients(clients.clone()))
-        .and(with_map_state(map_state_lock.clone()))
-        .and(with_map(map_lock.clone()))
+        .and(with_tx(tx.clone()))
         .and_then(handler::register_handler)
         .or(register
             .and(warp::delete())
@@ -60,8 +64,7 @@ async fn main() {
         .and(warp::ws())
         .and(warp::path::param())
         .and(with_clients(clients.clone()))
-        .and(with_map(map_lock.clone()))
-        .and(with_map_state(map_state_lock.clone()))
+        .and(with_tx(tx.clone()))
         .and_then(handler::ws_handler);
 
     let test_route = warp::path("test")
@@ -103,11 +106,7 @@ fn with_clients(clients: Clients) -> impl Filter<Extract = (Clients,), Error = I
     warp::any().map(move || clients.clone())
 }
 
-fn with_map(map: MapLock) -> impl Filter<Extract = (MapLock,), Error = Infallible> + Clone {
-    warp::any().map(move || map.clone())
-}
-
-fn with_map_state(map_state: MapStateLock) -> impl Filter<Extract = (MapStateLock,), Error = Infallible> + Clone {
-    warp::any().map(move || map_state.clone())
+fn with_tx(tx: map::MapSender) -> impl Filter<Extract = (map::MapSender,), Error = Infallible> + Clone {
+    warp::any().map(move || tx.clone())
 }
 

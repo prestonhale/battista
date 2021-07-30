@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use std::fmt;
 
 pub type Map = Vec<Cell>;
+pub type MapSender = tokio::sync::mpsc::Sender<PlayerInput>;
+pub type MapResponder<T> = tokio::sync::oneshot::Sender<T>;
 
 #[derive(Serialize, Clone, Debug)]
 pub struct Cell {
@@ -29,6 +31,7 @@ impl Cell {
 #[derive(Serialize)]
 pub struct MoveResponse {
     move_id: usize,
+    player_id: String,
     player_position: Coords,
     cell: Cell,
 }
@@ -59,8 +62,8 @@ pub struct MapState {
     player_state: HashMap<String, Coords>,
 }
 
-const WIDTH: usize = 100;
-const HEIGHT: usize = 100;
+const WIDTH: usize = 15;
+const HEIGHT: usize = 15;
 
 #[derive(Clone, Eq, PartialEq, Serialize, Hash, Debug)]
 enum MapDirection {
@@ -96,16 +99,185 @@ enum EdgeType {
     Wall,
 }
 
+struct RegisterResponse {
+    player_coords: Coords,
+    explored_cells: HashMap<usize, Cell>,
+}
+
 #[derive(Debug)]
 enum PlayerInput {
-    Register,
+    Register{
+        user_id: String,
+        resp: MapResponder<Option<RegisterResponse>>,
+    },
 
-    MoveNorth,
-    MoveEast,
-    MoveSouth,
-    MoveWest,
+    MoveNorth{
+        user_id: String,
+        resp: MapResponder<()>,
+    },
+    MoveEast{
+        user_id: String,
+        resp: MapResponder<()>,
+    },
+    MoveSouth{
+        user_id: String,
+        resp: MapResponder<()>,
+    },
+    MoveWest{
+        user_id: String,
+        resp: MapResponder<()>,
+    },
 
     Unknown,
+}
+
+pub async fn map_manager(mut rx: tokio::sync::mpsc::Receiver<PlayerInput>) {
+    let map = generate_map();
+    let mut map_state = generate_map_state();
+
+    while let Some(input) = rx.recv().await {
+        match input {
+            PlayerInput::Register {user_id} => {
+                match map_state.player_state.get(&user_id) {
+                    Some(_) => (),
+                    None => {
+                        map_state.player_state.insert(
+                            user_id,
+                            Coords {
+                                x: WIDTH / 2,
+                                y: HEIGHT / 2,
+                            },
+                        );
+                    }
+                }
+                // return None;
+            }
+            PlayerInput::MoveNorth { user_id } => {
+                let player_state = map_state.player_state.get(&user_id).unwrap().clone();
+                let new_position = adjust_in_direction(&player_state, &MapDirection::North, &map);
+                match new_position {
+                    Some(new_position) => {
+                        let next_cell = map.get(get_index_from_coords(&new_position)).clone();
+                        match next_cell {
+                            Some(next_cell) => {
+                                map_state
+                                    .explored_cells
+                                    .insert(get_index_from_coords(&new_position), next_cell.clone());
+                                map_state.player_state.insert(user_id.clone(), new_position.clone());
+    
+                                let move_command = serde_json::to_string(&MoveResponse {
+                                    move_id: 2,
+                                    player_id: user_id,
+                                    cell: next_cell.clone(),
+                                    player_position: new_position,
+                                })
+                                .unwrap();
+                                // return Some(move_command);
+                            }
+                            // None => return None,
+                            None => return (),
+                        }
+                    }
+                    // None => return None,
+                    None => return {},
+                }
+            }
+            PlayerInput::MoveEast { user_id }  => {
+                let player_state = map_state.player_state.get(&user_id).unwrap().clone();
+                let new_position = adjust_in_direction(&player_state, &MapDirection::East, &map);
+                match new_position {
+                    Some(new_position) => {
+                        let next_cell = map.get(get_index_from_coords(&new_position)).clone();
+                        match next_cell {
+                            Some(next_cell) => {
+                                map_state
+                                    .explored_cells
+                                    .insert(get_index_from_coords(&new_position), next_cell.clone());
+                                map_state.player_state.insert(user_id.clone(), new_position.clone());
+    
+                                let move_command = serde_json::to_string(&MoveResponse {
+                                    move_id: 2,
+                                    player_id: user_id,
+                                    cell: next_cell.clone(),
+                                    player_position: new_position,
+                                })
+                                .unwrap();
+                                // return Some(move_command);
+                            }
+                            // None => return None,
+                            None => return (),
+                        }
+                    }
+                    // None => return None,
+                    None => return (),
+                }
+            }
+            PlayerInput::MoveSouth { user_id } => {
+                let player_state = map_state.player_state.get(&user_id).unwrap().clone();
+                let new_position = adjust_in_direction(&player_state, &MapDirection::South, &map);
+                match new_position {
+                    Some(new_position) => {
+                        let next_cell = map.get(get_index_from_coords(&new_position)).clone();
+                        match next_cell {
+                            Some(next_cell) => {
+                                map_state
+                                    .explored_cells
+                                    .insert(get_index_from_coords(&new_position), next_cell.clone());
+                                map_state.player_state.insert(user_id.clone(), new_position.clone());
+    
+                                let move_command = serde_json::to_string(&MoveResponse {
+                                    move_id: 2,
+                                    player_id: user_id,
+                                    cell: next_cell.clone(),
+                                    player_position: new_position,
+                                })
+                                .unwrap();
+                                // return Some(move_command);
+                            }
+                            // None => return None,
+                            None => return (),
+                        }
+                    }
+                    // None => return None,
+                    None => return (),
+                }
+            }
+            PlayerInput::MoveWest { user_id } => {
+                let player_state = map_state.player_state.get(&user_id).unwrap().clone();
+                let new_position = adjust_in_direction(&player_state, &MapDirection::West, &map);
+                match new_position {
+                    Some(new_position) => {
+                        let next_cell = map.get(get_index_from_coords(&new_position)).clone();
+                        match next_cell {
+                            Some(next_cell) => {
+                                map_state
+                                    .explored_cells
+                                    .insert(get_index_from_coords(&new_position), next_cell.clone());
+                                map_state.player_state.insert(user_id.clone(), new_position.clone());
+    
+                                let move_command = serde_json::to_string(&MoveResponse {
+                                    move_id: 2,
+                                    player_id: user_id,
+                                    cell: next_cell.clone(),
+                                    player_position: new_position,
+                                })
+                                .unwrap();
+                                // return Some(move_command);
+                            }
+                            // None => return None,
+                            None => return (),
+                        }
+                    }
+                    // None => return None,
+                    None => return (),
+                }
+            }
+            PlayerInput::Unknown => {
+                // return None;
+                return ();
+            }
+        }
+    }
 }
 
 pub fn get_index_from_coords(coords: &Coords) -> usize {
@@ -312,201 +484,55 @@ pub fn update_map(map: &mut Map) {
     })] = Cell::no_walls(String::from("grey"))
 }
 
-// pub fn respond_to_player(player_states: &mut PlayerStates, user_id: String, input: String) -> Option<String>{
-//     let player_state = player_states
-//         .entry(user_id.clone())
-//         .or_insert(Coords{x: 10, y: 10})
-//         .clone();
-//     let player_action = match &input[..] {
-//         "n" => PlayerInput::MoveNorth,
-//         "e" => PlayerInput::MoveEast,
-//         "s" => PlayerInput::MoveSouth,
-//         "w" => PlayerInput::MoveWest,
-//         _ => PlayerInput::Unknown,
-//     };
-//     println!("Player {} took action {:?}", user_id, player_action);
-
-//     let purple_cell = Cell{color: "purple".to_owned()};
-//     let move_command = serde_json::to_string(&MoveCommand{move_id: 2, cell: purple_cell}).unwrap();
-//     match player_action {
-//         PlayerInput::MoveNorth => {
-//             player_states.insert(user_id, Coords{x: player_state.x, y: player_state.y - 1});
-//             return Some(move_command);
-//         },
-//         PlayerInput::MoveEast => {
-//             player_states.insert(user_id, Coords{x: player_state.x + 1, y: player_state.y});
-//             return Some(move_command);
-//         },
-//         PlayerInput::MoveSouth => {
-//             player_states.insert(user_id, Coords{x: player_state.x, y: player_state.y + 1});
-//             return Some(move_command);
-//         },
-//         PlayerInput::MoveWest => {
-//             player_states.insert(user_id, Coords{x: player_state.x - 1, y: player_state.y });
-//             return Some(move_command);
-//         }
-//         PlayerInput::Unknown => {
-//             return None;
-//         }
-//     }
-
-// }
-
 // Map should only ever be mutated here
 pub fn respond_to_player(
-    map: &Map,
-    map_state: &mut MapState,
+    tx: tokio::sync::mpsc::Sender<PlayerInput>,
     user_id: String,
     input: String,
 ) -> Option<String> {
-    //This is parsing. Parsing should be in its own func.
+    let (resp_tx, resp_rx) = oneshot::channel();
     let player_action = match &input[..] {
-        "register" => PlayerInput::Register,
+        "register" => PlayerInput::Register {
+            user_id: user_id.clone(),
+            resp: resp_tx
+        },
 
-        "n" => PlayerInput::MoveNorth,
-        "e" => PlayerInput::MoveEast,
-        "s" => PlayerInput::MoveSouth,
-        "w" => PlayerInput::MoveWest,
+        "n" => PlayerInput::MoveNorth {
+            user_id: user_id.clone()
+            resp: resp_tx
+        },
+        "e" => PlayerInput::MoveEast {
+            user_id: user_id.clone()
+            resp: resp_tx
+        },
+        "s" => PlayerInput::MoveSouth {
+            user_id: user_id.clone()
+            resp: resp_tx
+        },
+        "w" => PlayerInput::MoveWest {
+            user_id: user_id.clone()
+            resp: resp_tx
+        },
 
         _ => PlayerInput::Unknown,
     };
     println!("Player {} took action {:?}", user_id, player_action);
 
-    match player_action {
-        PlayerInput::Register => {
-            match map_state.player_state.get(&user_id) {
-                Some(_) => (),
-                None => {
-                    map_state.player_state.insert(
-                        user_id,
-                        Coords {
-                            x: WIDTH / 2,
-                            y: HEIGHT / 2,
-                        },
-                    );
-                }
-            }
-            return None;
-        }
-        PlayerInput::MoveNorth => {
-            let player_state = map_state.player_state.get(&user_id).unwrap().clone();
-            let new_position = adjust_in_direction(&player_state, &MapDirection::North, &map);
-            match new_position {
-                Some(new_position) => {
-                    let next_cell = map.get(get_index_from_coords(&new_position)).clone();
-                    match next_cell {
-                        Some(next_cell) => {
-                            map_state
-                                .explored_cells
-                                .insert(get_index_from_coords(&new_position), next_cell.clone());
-                            map_state.player_state.insert(user_id, new_position.clone());
+    tx.send(player_action).await.unwrap();
+    let res = resp_rx.await;
 
-                            let move_command = serde_json::to_string(&MoveResponse {
-                                move_id: 2,
-                                cell: next_cell.clone(),
-                                player_position: new_position,
-                            })
-                            .unwrap();
-                            return Some(move_command);
-                        }
-                        None => return None,
-                    }
-                }
-                None => return None,
-            }
-        }
-        PlayerInput::MoveEast => {
-            let player_state = map_state.player_state.get(&user_id).unwrap().clone();
-            let new_position = adjust_in_direction(&player_state, &MapDirection::East, &map);
-            match new_position {
-                Some(new_position) => {
-                    let next_cell = map.get(get_index_from_coords(&new_position)).clone();
-                    match next_cell {
-                        Some(next_cell) => {
-                            map_state
-                                .explored_cells
-                                .insert(get_index_from_coords(&new_position), next_cell.clone());
-                            map_state.player_state.insert(user_id, new_position.clone());
+    println!("")
 
-                            let move_command = serde_json::to_string(&MoveResponse {
-                                move_id: 2,
-                                cell: next_cell.clone(),
-                                player_position: new_position,
-                            })
-                            .unwrap();
-                            return Some(move_command);
-                        }
-                        None => return None,
-                    }
-                }
-                None => return None,
-            }
-        }
-        PlayerInput::MoveSouth => {
-            let player_state = map_state.player_state.get(&user_id).unwrap().clone();
-            let new_position = adjust_in_direction(&player_state, &MapDirection::South, &map);
-            match new_position {
-                Some(new_position) => {
-                    let next_cell = map.get(get_index_from_coords(&new_position)).clone();
-                    match next_cell {
-                        Some(next_cell) => {
-                            map_state
-                                .explored_cells
-                                .insert(get_index_from_coords(&new_position), next_cell.clone());
-                            map_state.player_state.insert(user_id, new_position.clone());
+    return None
 
-                            let move_command = serde_json::to_string(&MoveResponse {
-                                move_id: 2,
-                                cell: next_cell.clone(),
-                                player_position: new_position,
-                            })
-                            .unwrap();
-                            return Some(move_command);
-                        }
-                        None => return None,
-                    }
-                }
-                None => return None,
-            }
-        }
-        PlayerInput::MoveWest => {
-            let player_state = map_state.player_state.get(&user_id).unwrap().clone();
-            let new_position = adjust_in_direction(&player_state, &MapDirection::West, &map);
-            match new_position {
-                Some(new_position) => {
-                    let next_cell = map.get(get_index_from_coords(&new_position)).clone();
-                    match next_cell {
-                        Some(next_cell) => {
-                            map_state
-                                .explored_cells
-                                .insert(get_index_from_coords(&new_position), next_cell.clone());
-                            map_state.player_state.insert(user_id, new_position.clone());
-
-                            let move_command = serde_json::to_string(&MoveResponse {
-                                move_id: 2,
-                                cell: next_cell.clone(),
-                                player_position: new_position,
-                            })
-                            .unwrap();
-                            return Some(move_command);
-                        }
-                        None => return None,
-                    }
-                }
-                None => return None,
-            }
-        }
-        PlayerInput::Unknown => {
-            return None;
-        }
-    }
+    
 }
 
-pub fn get_player_coords(user_id: String, map_state: &mut MapState) -> Coords {
+fn get_player_coords(user_id: String, map_state: &mut MapState) -> Coords {
     return map_state.player_state.get(&user_id).unwrap().clone();
 }
 
-pub fn get_explored_cells(map_state: &mut MapState) -> HashMap<usize, Cell> {
+fn get_explored_cells(map_state: &mut MapState) -> HashMap<usize, Cell> {
     return map_state.explored_cells.clone();
 }
 

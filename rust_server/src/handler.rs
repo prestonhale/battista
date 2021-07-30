@@ -45,29 +45,25 @@ pub async fn publish_handler(body: Event, clients: Clients) -> Result<impl Reply
     Ok(StatusCode::OK)
 }
 
-pub async fn register_handler(body: RegisterRequest, clients: Clients, map_state: MapStateLock, map: MapLock) -> Result<impl Reply> {
+pub async fn register_handler(body: RegisterRequest, clients: Clients,tx: map::MapSender) -> Result<impl Reply> {
     let user_id = body.user_id;
     let uuid = Uuid::new_v4().simple().to_string();
 
 
     register_client(uuid.clone(), user_id, clients).await;
     
-    let player_coords;
-    let explored_cells;
+    let response;
     {
-        let mut map_state_lock = map_state.write().await;
-        let map_lock = map.read().await;
-        map::respond_to_player(&map_lock, &mut map_state_lock, user_id.to_string(), "register".to_string());
-        player_coords = map::get_player_coords(user_id.to_string(), &mut map_state_lock);
-        explored_cells = map::get_explored_cells(&mut map_state_lock);
+        // let map_lock = map.read().await;
+        response = map::respond_to_player(tx, user_id.to_string(), "register".to_string());
     }
 
     let (width, height) = map::get_dimensions();
 
     Ok(json(&RegisterResponse {
         url: format!("ws://127.0.0.1:8000/ws/{}", uuid),
-        player_position: player_coords.clone(),
-        explored_cells: explored_cells,
+        player_position: response.player_coords.clone(),
+        explored_cells: response.explored_cells,
         height: height,
         width: width
     }))
@@ -89,10 +85,15 @@ pub async fn unregister_handler(id: String, clients: Clients) -> Result<impl Rep
     Ok(StatusCode::OK)
 }
 
-pub async fn ws_handler(ws: warp::ws::Ws, id: String, clients: Clients, map: MapLock, map_state: MapStateLock) -> Result<impl Reply> {
+pub async fn ws_handler(
+        ws: warp::ws::Ws,
+        id: String,
+        clients: Clients,
+        tx: map::MapSender,
+    ) -> Result<impl Reply> {
     let client = clients.read().await.get(&id).cloned();
     match client {
-        Some(c) => Ok(ws.on_upgrade(move |socket| ws::client_connection(socket, id, clients, map, map_state, c))),
+        Some(c) => Ok(ws.on_upgrade(move |socket| ws::client_connection(socket, id, clients, tx, map, map_state, c))),
         None => Err(warp::reject::not_found()),
     }
 }

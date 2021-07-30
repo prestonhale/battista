@@ -26,6 +26,8 @@
         let roomSize = 25;
         let wallWidth = roomSize/10;
         let player_position;
+        let user_id;
+        let other_players = {};
 
         let edgeTypes = {
             WALL: "Wall",
@@ -68,11 +70,14 @@
                 socket.addEventListener('message', data =>{
                     console.log(`Received: ${data.data}`);
                     data = JSON.parse(data.data);
-                    if (move_id) {
+                    // TODO: Add response types
+                    if (data.move_id && data.player_id == user_id) {
                         playerPosition = data.player_position;
-                        console.log(playerPosition);
-                        discoveredRooms[getIndexFromCoords(playerPosition)] = data.cell
+                        discoveredRooms[getIndexFromCoords(data.player_position)] = data.cell;
                         move_id = null;
+                    } else {
+                        discoveredRooms[getIndexFromCoords(data.player_position)] = data.cell;
+                        other_players[data.player_id] = data.player_position;
                     }
                     render();
                 })
@@ -128,6 +133,7 @@
         }
 
         async function registerUser(username){
+            user_id = username.hashCode();
             const registerUrl = 'http://localhost:8000/register';
 
             const headers = new Headers({
@@ -136,7 +142,7 @@
             const response = await fetch(registerUrl, {
                 method: 'POST',
                 headers: headers,
-                body: JSON.stringify({user_id: username.hashCode()})
+                body: JSON.stringify({user_id: user_id})
             });
             return response.json();
         }
@@ -185,6 +191,7 @@
             }
 
             drawPlayer();
+            drawOtherPlayers();
         }
 
         function sleep(ms) {
@@ -276,6 +283,35 @@
             );
             ctx.stroke();
         }
+
+        function drawOtherPlayers() {
+            for (const property in other_players) {
+                let x = other_players[property].x;
+                let y = other_players[property].y;
+
+                let leftX = x * roomSize;
+                let rightX = (x * roomSize) + roomSize;
+                let topY = y * roomSize;
+                let bottomY = (y * roomSize) + roomSize;
+
+                // adjust
+                let shrink = roomSize/10
+                leftX += shrink;
+                topY += shrink;
+                color = "black";
+
+                ctx.beginPath();
+                ctx.fillStyle = color;
+                ctx.fillRect(
+                    leftX,
+                    topY,
+                    roomSize - shrink * 2,
+                    roomSize - shrink * 2,
+                );
+                ctx.stroke();
+            }
+        }
+
     </script>
 </html>
     

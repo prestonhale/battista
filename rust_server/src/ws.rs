@@ -21,6 +21,7 @@ pub async fn client_connection(
         ws: WebSocket, 
         id: String, 
         clients: Clients, 
+        tx: map::MapSender,
         map: MapLock, 
         map_state: MapStateLock, 
         mut client: Client
@@ -43,20 +44,6 @@ pub async fn client_connection(
     let cid = id.clone();
     let cclients = clients.clone();
 
-    // TODO: There will be moments to push to client, e.g. a room updates under their feet
-    // tokio::task::spawn(async move {
-        // loop {
-            // let map_lock = map.read().await;
-            // let map_data = serde_json::to_string(&(*map_lock)).unwrap();
-            // cclients.read().await
-            //     .get(&cid).unwrap()
-            //     .sender.as_ref().unwrap()
-            //     .send(Ok(Message::text(map_data)))
-            //     .unwrap();
-            // tokio::time::delay_for(Duration::from_millis(1000)).await;
-        // }
-    // });
-
     while let Some(result) = client_ws_rcv.next().await {
         let msg = match result {
             Ok(msg) => msg,
@@ -65,7 +52,7 @@ pub async fn client_connection(
                 break;
             }
         };
-        let response = client_msg(&id, msg, &clients, &map, &map_state).await;
+        let response = client_msg(&id, msg, tx, &clients, &map, &map_state).await;
         match response {
             Some(msg) => {
             cclients.read().await
@@ -86,7 +73,6 @@ async fn client_msg(
         id: &str, 
         msg: Message, 
         clients: &Clients, 
-        map: &MapLock,
         map_state: &MapStateLock) -> Option<String>{
     println!("received message from {}: {:?}", id, msg);
     let message = match msg.to_str() {
@@ -109,10 +95,17 @@ async fn client_msg(
     let client_lock = clients.read().await;
     let user_id = client_lock.get(&id.to_string()).unwrap().user_id.clone();
 
-    let mut locked = map_state.write().await;
-    let map_lock = map.read().await;
-    // let response = map::respond_to_player(&mut locked, user_id.to_string(), user_input.input);
-    let response = map::respond_to_player(&map_lock, &mut locked, user_id.to_string(), user_input.input);
+    let response = map::respond_to_player(tx, user_id.to_string(), user_input.input);
+    if let Some(ref some_response) = response {
+        // Message is sent even on "failed" moves
+        clients.read().await
+            .iter()
+            .for_each(|(_, client)| {
+                if let Some(sender) = &client.sender {
+                    let _ = sender.send(Ok(Message::text(some_response)));
+                }
+        });
+    }
 
     return response;
 }
