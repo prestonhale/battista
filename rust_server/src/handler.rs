@@ -45,21 +45,20 @@ pub async fn publish_handler(body: Event, clients: Clients) -> Result<impl Reply
     Ok(StatusCode::OK)
 }
 
-pub async fn register_handler(body: RegisterRequest, clients: Clients,tx: map::MapSender) -> Result<impl Reply> {
+pub async fn register_handler(body: RegisterRequest, clients: Clients, tx: map::MapSender) -> Result<impl Reply> {
     let user_id = body.user_id;
     let uuid = Uuid::new_v4().simple().to_string();
 
 
     register_client(uuid.clone(), user_id, clients).await;
     
-    let response;
-    {
-        // let map_lock = map.read().await;
-        response = map::respond_to_player(tx, user_id.to_string(), "register".to_string());
-    }
-
+    println!("tep");
+    let response = map::register_player(tx, user_id.to_string()).await;
+    println!("tep");
     let (width, height) = map::get_dimensions();
+    println!("tep");
 
+    println!("{:?}", response);
     Ok(json(&RegisterResponse {
         url: format!("ws://127.0.0.1:8000/ws/{}", uuid),
         player_position: response.player_coords.clone(),
@@ -93,7 +92,7 @@ pub async fn ws_handler(
     ) -> Result<impl Reply> {
     let client = clients.read().await.get(&id).cloned();
     match client {
-        Some(c) => Ok(ws.on_upgrade(move |socket| ws::client_connection(socket, id, clients, tx, map, map_state, c))),
+        Some(c) => Ok(ws.on_upgrade(move |socket| ws::client_connection(socket, id, clients, tx, c))),
         None => Err(warp::reject::not_found()),
     }
 }

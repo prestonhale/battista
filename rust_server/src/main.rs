@@ -26,19 +26,17 @@ pub struct Client {
 async fn main() {
     let clients: Clients = Arc::new(RwLock::new(HashMap::new()));
 
-    let map = map::generate_map();
-    let map_lock = Arc::new(RwLock::new(map));
-
-    let (tx, mut rx) = mpsc::channel(32);
-    let map_manager = tokio::spawn(async move {
-        map::map_manager(rx)
+    let (mut tx, rx) = mpsc::channel(32);
+    tokio::spawn(async move{
+        map::map_manager(rx).await;
     });
 
-    let player_states = map::generate_player_states();
-    let player_states_lock = Arc::new(RwLock::new(player_states));
-    
-    let map_state = map::generate_map_state();
-    let map_state_lock = Arc::new(RwLock::new(map_state));
+    // let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
+    // tx.send(map::PlayerInput::Register{
+    //     user_id: "677".to_string(),
+    //     resp: resp_tx
+    // }).await.unwrap();
+    // println!("{:?}", resp_rx.await);
 
     let health_route = warp::path!("health").and_then(handler::health_handler);
 
@@ -82,21 +80,6 @@ async fn main() {
         .or(publish)
         .or(test_route)
         .with(cors);
-
-    let map_handle = map_lock.clone();
-    tokio::task::spawn(async move {
-        loop {
-            println!("loop");
-            // This block ensures the lock write lock isn't held for a whole second
-            {
-                let mut locked_map = map_handle.write().await;
-                map::update_map(&mut(*locked_map));
-            }
-            let one_second = Duration::new(1, 0);
-            tokio::time::delay_for(one_second).await;
-            tokio::task::yield_now().await;
-        }
-    });
 
     warp::serve(routes).run(([127, 0, 0, 1], 8000)).await;
 }

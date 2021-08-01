@@ -21,9 +21,7 @@ pub async fn client_connection(
         ws: WebSocket, 
         id: String, 
         clients: Clients, 
-        tx: map::MapSender,
-        map: MapLock, 
-        map_state: MapStateLock, 
+        mut tx: map::MapSender,
         mut client: Client
     ) {
     let (client_ws_sender, mut client_ws_rcv) = ws.split(); // Why is client_ws_rcv mut?
@@ -52,7 +50,7 @@ pub async fn client_connection(
                 break;
             }
         };
-        let response = client_msg(&id, msg, tx, &clients, &map, &map_state).await;
+        let response = client_msg(&id, msg, &mut tx, &clients).await;
         match response {
             Some(msg) => {
             cclients.read().await
@@ -72,8 +70,8 @@ pub async fn client_connection(
 async fn client_msg(
         id: &str, 
         msg: Message, 
-        clients: &Clients, 
-        map_state: &MapStateLock) -> Option<String>{
+        tx: &mut map::MapSender,
+        clients: &Clients) -> Option<String>{
     println!("received message from {}: {:?}", id, msg);
     let message = match msg.to_str() {
         Ok(v) => v,
@@ -95,7 +93,7 @@ async fn client_msg(
     let client_lock = clients.read().await;
     let user_id = client_lock.get(&id.to_string()).unwrap().user_id.clone();
 
-    let response = map::respond_to_player(tx, user_id.to_string(), user_input.input);
+    let response = map::respond_to_player(tx, user_id.to_string(), user_input.input).await;
     if let Some(ref some_response) = response {
         // Message is sent even on "failed" moves
         clients.read().await
@@ -107,5 +105,6 @@ async fn client_msg(
         });
     }
 
-    return response;
+    // return response;
+    return None;
 }

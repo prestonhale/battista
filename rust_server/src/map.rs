@@ -2,6 +2,7 @@ use rand::Rng;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fmt;
+use std::panic;
 
 pub type Map = Vec<Cell>;
 pub type MapSender = tokio::sync::mpsc::Sender<PlayerInput>;
@@ -56,9 +57,11 @@ impl fmt::Display for Coords {
 //     }
 // }
 
+pub type ExploredCells = HashMap<usize, Cell>;
+
 #[derive(Serialize, Clone)]
 pub struct MapState {
-    explored_cells: HashMap<usize, Cell>,
+    explored_cells: ExploredCells,
     player_state: HashMap<String, Coords>,
 }
 
@@ -99,45 +102,48 @@ enum EdgeType {
     Wall,
 }
 
-struct RegisterResponse {
-    player_coords: Coords,
-    explored_cells: HashMap<usize, Cell>,
+#[derive(Debug)]
+pub struct RegisterResponse {
+    pub player_coords: Coords,
+    pub explored_cells: HashMap<usize, Cell>,
 }
 
 #[derive(Debug)]
-enum PlayerInput {
+pub enum PlayerInput {
     Register{
         user_id: String,
-        resp: MapResponder<Option<RegisterResponse>>,
+        resp: MapResponder<RegisterResponse>
     },
 
     MoveNorth{
         user_id: String,
-        resp: MapResponder<()>,
+        resp: MapResponder<Option<String>>
     },
     MoveEast{
         user_id: String,
-        resp: MapResponder<()>,
+        resp: MapResponder<Option<String>>
     },
     MoveSouth{
         user_id: String,
-        resp: MapResponder<()>,
+        resp: MapResponder<Option<String>>
     },
     MoveWest{
         user_id: String,
-        resp: MapResponder<()>,
+        resp: MapResponder<Option<String>>
     },
 
     Unknown,
 }
+
 
 pub async fn map_manager(mut rx: tokio::sync::mpsc::Receiver<PlayerInput>) {
     let map = generate_map();
     let mut map_state = generate_map_state();
 
     while let Some(input) = rx.recv().await {
+        println!("Received input to process: {:?}", input);
         match input {
-            PlayerInput::Register {user_id} => {
+            PlayerInput::Register {user_id, resp} => {
                 match map_state.player_state.get(&user_id) {
                     Some(_) => (),
                     None => {
@@ -150,9 +156,13 @@ pub async fn map_manager(mut rx: tokio::sync::mpsc::Receiver<PlayerInput>) {
                         );
                     }
                 }
-                // return None;
+                let res = RegisterResponse{
+                    player_coords: Coords{x: WIDTH / 2, y: HEIGHT / 2},
+                    explored_cells: map_state.explored_cells.clone(),
+                };
+                resp.send(res).unwrap();
             }
-            PlayerInput::MoveNorth { user_id } => {
+            PlayerInput::MoveNorth { user_id, resp } => {
                 let player_state = map_state.player_state.get(&user_id).unwrap().clone();
                 let new_position = adjust_in_direction(&player_state, &MapDirection::North, &map);
                 match new_position {
@@ -172,17 +182,15 @@ pub async fn map_manager(mut rx: tokio::sync::mpsc::Receiver<PlayerInput>) {
                                     player_position: new_position,
                                 })
                                 .unwrap();
-                                // return Some(move_command);
+                                resp.send(Some(move_command)).unwrap();
                             }
-                            // None => return None,
-                            None => return (),
+                            None => resp.send(None).unwrap(),
                         }
                     }
-                    // None => return None,
-                    None => return {},
+                    None => resp.send(None).unwrap(),
                 }
             }
-            PlayerInput::MoveEast { user_id }  => {
+            PlayerInput::MoveEast { user_id, resp }  => {
                 let player_state = map_state.player_state.get(&user_id).unwrap().clone();
                 let new_position = adjust_in_direction(&player_state, &MapDirection::East, &map);
                 match new_position {
@@ -202,17 +210,15 @@ pub async fn map_manager(mut rx: tokio::sync::mpsc::Receiver<PlayerInput>) {
                                     player_position: new_position,
                                 })
                                 .unwrap();
-                                // return Some(move_command);
+                                resp.send(Some(move_command)).unwrap();
                             }
-                            // None => return None,
-                            None => return (),
+                            None => resp.send(None).unwrap(),
                         }
                     }
-                    // None => return None,
-                    None => return (),
+                    None => resp.send(None).unwrap(),
                 }
             }
-            PlayerInput::MoveSouth { user_id } => {
+            PlayerInput::MoveSouth { user_id, resp } => {
                 let player_state = map_state.player_state.get(&user_id).unwrap().clone();
                 let new_position = adjust_in_direction(&player_state, &MapDirection::South, &map);
                 match new_position {
@@ -232,17 +238,15 @@ pub async fn map_manager(mut rx: tokio::sync::mpsc::Receiver<PlayerInput>) {
                                     player_position: new_position,
                                 })
                                 .unwrap();
-                                // return Some(move_command);
+                                resp.send(Some(move_command)).unwrap();
                             }
-                            // None => return None,
-                            None => return (),
+                            None => resp.send(None).unwrap(),
                         }
                     }
-                    // None => return None,
-                    None => return (),
+                    None => resp.send(None).unwrap(),
                 }
             }
-            PlayerInput::MoveWest { user_id } => {
+            PlayerInput::MoveWest { user_id, resp } => {
                 let player_state = map_state.player_state.get(&user_id).unwrap().clone();
                 let new_position = adjust_in_direction(&player_state, &MapDirection::West, &map);
                 match new_position {
@@ -262,20 +266,17 @@ pub async fn map_manager(mut rx: tokio::sync::mpsc::Receiver<PlayerInput>) {
                                     player_position: new_position,
                                 })
                                 .unwrap();
-                                // return Some(move_command);
+                                resp.send(Some(move_command)).unwrap();
                             }
-                            // None => return None,
-                            None => return (),
+                            None => resp.send(None).unwrap(),
                         }
                     }
-                    // None => return None,
-                    None => return (),
+                    None => resp.send(None).unwrap(),
                 }
-            }
+            },
             PlayerInput::Unknown => {
-                // return None;
-                return ();
-            }
+                panic!("Unknown input received")
+            },
         }
     }
 }
@@ -485,45 +486,52 @@ pub fn update_map(map: &mut Map) {
 }
 
 // Map should only ever be mutated here
-pub fn respond_to_player(
-    tx: tokio::sync::mpsc::Sender<PlayerInput>,
+pub async fn register_player (
+    mut tx: tokio::sync::mpsc::Sender<PlayerInput>,
+    // tx: MapSender,
+    user_id: String,
+) -> RegisterResponse {
+    let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
+    let player_action = PlayerInput::Register {
+        user_id: user_id.clone(),
+        resp: resp_tx,
+    };
+    tx.send(player_action).await.unwrap();
+    // Potentially hang forever
+    return resp_rx.await.unwrap();
+}
+
+pub async fn respond_to_player(
+    // tx: tokio::sync::mpsc::Sender<PlayerInput>,
+    tx: &mut MapSender,
     user_id: String,
     input: String,
-) -> Option<String> {
-    let (resp_tx, resp_rx) = oneshot::channel();
-    let player_action = match &input[..] {
-        "register" => PlayerInput::Register {
-            user_id: user_id.clone(),
-            resp: resp_tx
-        },
-
+) -> Option<String>{
+    let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
+    let input = match &input[..] {
         "n" => PlayerInput::MoveNorth {
-            user_id: user_id.clone()
-            resp: resp_tx
+            user_id: user_id.clone(),
+            resp: resp_tx,
         },
         "e" => PlayerInput::MoveEast {
-            user_id: user_id.clone()
-            resp: resp_tx
+            user_id: user_id.clone(),
+            resp: resp_tx,
         },
         "s" => PlayerInput::MoveSouth {
-            user_id: user_id.clone()
-            resp: resp_tx
+            user_id: user_id.clone(),
+            resp: resp_tx,
         },
         "w" => PlayerInput::MoveWest {
-            user_id: user_id.clone()
-            resp: resp_tx
+            user_id: user_id.clone(),
+            resp: resp_tx,
         },
 
-        _ => PlayerInput::Unknown,
+        _ => PlayerInput::Unknown
+            
     };
-    println!("Player {} took action {:?}", user_id, player_action);
-
-    tx.send(player_action).await.unwrap();
-    let res = resp_rx.await;
-
-    println!("")
-
-    return None
+    
+    tx.send(input).await.unwrap();
+    return resp_rx.await.unwrap();
 
     
 }
