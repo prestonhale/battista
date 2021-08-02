@@ -1,4 +1,4 @@
-use crate::{ws, Client, Clients, Result, MapLock, MapStateLock};
+use crate::{ws, Client, Clients, Result};
 use crate::map;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -11,7 +11,7 @@ pub struct RegisterRequest {
 }
 
 #[derive(Serialize, Debug)]
-pub struct RegisterResponse {
+pub struct RegisterResponse{
     url: String,
     player_position: map::Coords,
     explored_cells: HashMap<usize, map::Cell>,

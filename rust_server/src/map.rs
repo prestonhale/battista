@@ -4,23 +4,41 @@ use std::collections::HashMap;
 use std::fmt;
 use std::panic;
 
-pub type Map = Vec<Cell>;
+// pub type Map = Vec<Cell>;
+pub struct Map{
+    cells: Vec<Cell>,
+    rooms: Vec<Room>,
+}
+
 pub type MapSender = tokio::sync::mpsc::Sender<PlayerInput>;
 pub type MapResponder<T> = tokio::sync::oneshot::Sender<T>;
 
 #[derive(Serialize, Clone, Debug)]
 pub struct Cell {
-    color: String,
+    room_index: usize, 
     edges: HashMap<MapDirection, EdgeType>,
 }
 
+#[derive(PartialEq, Serialize, Clone, Debug)]
+pub struct Room {
+    room_type: RoomType,
+    color: String,
+}
+
 impl Cell {
-    fn no_walls(color: String) -> Cell {
+    fn no_walls(room_index: usize) -> Cell {
         return Cell {
-            color: color,
+            room_index: room_index,
             edges: HashMap::new(),
         };
     }
+}
+
+#[derive(Serialize, Debug, Clone, PartialEq)]
+enum RoomType {
+    Null,
+    Open,
+    Corridor,
 }
 
 // #[derive(Serialize)]
@@ -30,11 +48,12 @@ impl Cell {
 // }
 
 #[derive(Serialize)]
-pub struct MoveResponse {
+pub struct MoveResponse{
     move_id: usize,
     player_id: String,
     player_position: Coords,
     cell: Cell,
+    room: Room,
 }
 
 #[derive(Serialize, Clone, Debug, Hash, Eq, PartialEq)]
@@ -60,7 +79,7 @@ impl fmt::Display for Coords {
 pub type ExploredCells = HashMap<usize, Cell>;
 
 #[derive(Serialize, Clone)]
-pub struct MapState {
+pub struct MapState{
     explored_cells: ExploredCells,
     player_state: HashMap<String, Coords>,
 }
@@ -100,6 +119,7 @@ impl MapDirection {
 enum EdgeType {
     Passage,
     Wall,
+    Door,
 }
 
 #[derive(Debug)]
@@ -109,7 +129,7 @@ pub struct RegisterResponse {
 }
 
 #[derive(Debug)]
-pub enum PlayerInput {
+pub enum PlayerInput{
     Register{
         user_id: String,
         resp: MapResponder<RegisterResponse>
@@ -136,7 +156,7 @@ pub enum PlayerInput {
 }
 
 
-pub async fn map_manager(mut rx: tokio::sync::mpsc::Receiver<PlayerInput>) {
+pub async fn map_manager<'a>(mut rx: tokio::sync::mpsc::Receiver<PlayerInput>) {
     let map = generate_map();
     let mut map_state = generate_map_state();
 
@@ -167,7 +187,7 @@ pub async fn map_manager(mut rx: tokio::sync::mpsc::Receiver<PlayerInput>) {
                 let new_position = adjust_in_direction(&player_state, &MapDirection::North, &map);
                 match new_position {
                     Some(new_position) => {
-                        let next_cell = map.get(get_index_from_coords(&new_position)).clone();
+                        let next_cell = map.cells.get(get_index_from_coords(&new_position)).clone();
                         match next_cell {
                             Some(next_cell) => {
                                 map_state
@@ -179,6 +199,7 @@ pub async fn map_manager(mut rx: tokio::sync::mpsc::Receiver<PlayerInput>) {
                                     move_id: 2,
                                     player_id: user_id,
                                     cell: next_cell.clone(),
+                                    room: map.rooms[next_cell.room_index].clone(),
                                     player_position: new_position,
                                 })
                                 .unwrap();
@@ -195,7 +216,7 @@ pub async fn map_manager(mut rx: tokio::sync::mpsc::Receiver<PlayerInput>) {
                 let new_position = adjust_in_direction(&player_state, &MapDirection::East, &map);
                 match new_position {
                     Some(new_position) => {
-                        let next_cell = map.get(get_index_from_coords(&new_position)).clone();
+                        let next_cell = map.cells.get(get_index_from_coords(&new_position)).clone();
                         match next_cell {
                             Some(next_cell) => {
                                 map_state
@@ -207,6 +228,7 @@ pub async fn map_manager(mut rx: tokio::sync::mpsc::Receiver<PlayerInput>) {
                                     move_id: 2,
                                     player_id: user_id,
                                     cell: next_cell.clone(),
+                                    room: map.rooms[next_cell.room_index].clone(),
                                     player_position: new_position,
                                 })
                                 .unwrap();
@@ -223,7 +245,7 @@ pub async fn map_manager(mut rx: tokio::sync::mpsc::Receiver<PlayerInput>) {
                 let new_position = adjust_in_direction(&player_state, &MapDirection::South, &map);
                 match new_position {
                     Some(new_position) => {
-                        let next_cell = map.get(get_index_from_coords(&new_position)).clone();
+                        let next_cell = map.cells.get(get_index_from_coords(&new_position)).clone();
                         match next_cell {
                             Some(next_cell) => {
                                 map_state
@@ -234,6 +256,7 @@ pub async fn map_manager(mut rx: tokio::sync::mpsc::Receiver<PlayerInput>) {
                                 let move_command = serde_json::to_string(&MoveResponse {
                                     move_id: 2,
                                     player_id: user_id,
+                                    room: map.rooms[next_cell.room_index].clone(),
                                     cell: next_cell.clone(),
                                     player_position: new_position,
                                 })
@@ -251,7 +274,7 @@ pub async fn map_manager(mut rx: tokio::sync::mpsc::Receiver<PlayerInput>) {
                 let new_position = adjust_in_direction(&player_state, &MapDirection::West, &map);
                 match new_position {
                     Some(new_position) => {
-                        let next_cell = map.get(get_index_from_coords(&new_position)).clone();
+                        let next_cell = map.cells.get(get_index_from_coords(&new_position)).clone();
                         match next_cell {
                             Some(next_cell) => {
                                 map_state
@@ -262,6 +285,7 @@ pub async fn map_manager(mut rx: tokio::sync::mpsc::Receiver<PlayerInput>) {
                                 let move_command = serde_json::to_string(&MoveResponse {
                                     move_id: 2,
                                     player_id: user_id,
+                                    room: map.rooms[next_cell.room_index].clone(),
                                     cell: next_cell.clone(),
                                     player_position: new_position,
                                 })
@@ -285,24 +309,26 @@ pub fn get_index_from_coords(coords: &Coords) -> usize {
     return (coords.y * WIDTH) + coords.x;
 }
 
-pub fn generate_player_states() -> HashMap<String, Coords> {
-    let player_states = HashMap::new();
-    return player_states;
-}
-
-pub fn generate_map() -> Vec<Cell> {
+pub fn generate_map() -> Map {
     let cell_count = WIDTH * HEIGHT;
-    let mut map = Vec::with_capacity(cell_count);
+    let mut map = Map{
+        cells: Vec::with_capacity(cell_count),
+        rooms: Vec::new(),
+    };
+    map.rooms.push(Room{
+        color: COLORS[0].to_owned(),
+        room_type: RoomType::Null,
+    });
     for _ in 0..cell_count {
-        map.push(Cell::no_walls(String::from("grey")));
+        map.cells.push(Cell::no_walls(0));
     }
     let mut initialized_cells: HashMap<usize, bool> = HashMap::new();
     let mut active_coords: Vec<Coords> = Vec::new();
     do_first_generation_step(&mut map, &mut active_coords, &mut initialized_cells);
-    println!("{}", active_coords.len());
     while active_coords.len() > 0 {
         do_next_generation_step(&mut map, &mut active_coords, &mut initialized_cells);
     }
+    println!("{}", map.rooms.len());
     return map;
 }
 
@@ -314,20 +340,24 @@ fn random_coordinate() -> Coords {
     };
 }
 
-fn do_first_generation_step(
-    map: &mut Vec<Cell>,
+fn do_first_generation_step<'a>(
+    map: &'a mut Map,
     active_coords: &mut Vec<Coords>,
     initialized_cells: &mut HashMap<usize, bool>,
 ) {
     let start_coord = random_coordinate();
     let start_index = get_index_from_coords(&start_coord);
-    create_cell(map, &start_coord, initialized_cells);
+    create_cell(map, 0, &start_coord, initialized_cells);
     active_coords.push(start_coord);
-    map[start_index] = Cell::no_walls(String::from("grey"));
+    let new_cell = Cell::no_walls(0);
+    // map.cells[start_index] = new_cell;
 }
 
+const DOOR_CHANCE: f64 = 0.1;
+const OPEN_ROOM_CHANCE: f64 = 0.5;
+
 fn do_next_generation_step(
-    map: &mut Vec<Cell>,
+    map: &mut Map,
     active_coords: &mut Vec<Coords>,
     initialized_cells: &mut HashMap<usize, bool>,
 ) {
@@ -337,18 +367,39 @@ fn do_next_generation_step(
         active_coords.remove(active_coords.len() - 1);
         return;
     }
-    let direction = get_random_uninitialized_direction(&map[active_cell_index]);
+    let direction = get_random_uninitialized_direction(&map.cells[active_cell_index]);
     match adjust_in_direction(&active_coord, &direction, &map) {
         Some(next_coord) => match initialized_cells.get(&get_index_from_coords(&next_coord)) {
-            Some(_) => create_wall(
-                map,
-                &active_cell_index,
-                Some(&get_index_from_coords(&next_coord)),
-                &direction,
-            ),
+            Some(_) => {
+                let neighbor_index = get_index_from_coords(&next_coord);
+                if map.cells[neighbor_index].room_index == map.cells[active_cell_index].room_index {
+                    create_passage(
+                        map,
+                        &active_cell_index,
+                        &neighbor_index,
+                        &direction,
+                    )
+                } else {
+                    create_wall(
+                        map,
+                        &active_cell_index,
+                        Some(&get_index_from_coords(&next_coord)),
+                        &direction,
+                    )
+                }
+            },
             None => {
-                let new_neighbor_index = create_cell(map, &next_coord, initialized_cells);
-                create_passage(map, &active_cell_index, &new_neighbor_index, &direction);
+                let cur_cell_room_index = map.cells[active_cell_index].room_index;
+                let new_neighbor_index = create_cell(map, cur_cell_room_index, &next_coord, initialized_cells);
+                let mut rng = rand::thread_rng();
+                let door = rng.gen_bool(DOOR_CHANCE);
+                if door {
+                    create_door(map, &active_cell_index, &new_neighbor_index, &direction);
+                    let new_room_index = create_room(map);
+                    map.cells[new_neighbor_index].room_index = new_room_index;
+                } else {
+                    create_passage(map, &active_cell_index, &new_neighbor_index, &direction);
+                }
                 active_coords.push(next_coord);
             }
         },
@@ -359,7 +410,7 @@ fn do_next_generation_step(
 }
 
 fn cell_is_initialized(map: &mut Map, index: &usize) -> bool {
-    if map[*index].edges.len() == 4 {
+    if map.cells[*index].edges.len() == 4 {
         return true;
     }
     return false;
@@ -367,30 +418,58 @@ fn cell_is_initialized(map: &mut Map, index: &usize) -> bool {
 
 fn create_cell(
     map: &mut Map,
+    room_index: usize,
     coord: &Coords,
     initialized_cells: &mut HashMap<usize, bool>,
 ) -> usize {
-    let cell = Cell::no_walls(String::from("grey"));
+    let cell = Cell::no_walls(room_index);
     let i = get_index_from_coords(coord);
-    map[i] = cell;
+    map.cells[i] = cell;
     initialized_cells.insert(i, true);
     return i;
 }
 
+fn create_room(map: &mut Map) -> usize{
+    let room = Room{color: rand_color(), room_type: rand_room_type()};
+    map.rooms.push(room);
+    return map.rooms.len() - 1;
+}
+    
+static COLORS: &'static [&str] = &["blue", "green", "red", "orange", "pink"];
+
+fn rand_color() -> String {
+    let mut rng = rand::thread_rng();
+    let rand_i = rng.gen_range(0, COLORS.len());
+    return COLORS[rand_i].to_owned();
+}
+
+fn rand_room_type() -> RoomType {
+    return RoomType::Corridor;
+}
+
+fn create_door(map: &mut Map, cell_a: &usize, cell_b: &usize, direction: &MapDirection) {
+    map.cells[*cell_a]
+        .edges
+        .insert(direction.clone(), EdgeType::Door);
+    map.cells[*cell_b]
+        .edges
+        .insert(direction.opposite(), EdgeType::Door);
+}
+
 fn create_passage(map: &mut Map, cell_a: &usize, cell_b: &usize, direction: &MapDirection) {
-    map[*cell_a]
+    map.cells[*cell_a]
         .edges
         .insert(direction.clone(), EdgeType::Passage);
-    map[*cell_b]
+    map.cells[*cell_b]
         .edges
         .insert(direction.opposite(), EdgeType::Passage);
 }
 
 fn create_wall(map: &mut Map, cell_a: &usize, cell_b: Option<&usize>, direction: &MapDirection) {
-    map[*cell_a].edges.insert(direction.clone(), EdgeType::Wall);
+    map.cells[*cell_a].edges.insert(direction.clone(), EdgeType::Wall);
     match cell_b {
         Some(cell) => {
-            map[*cell]
+            map.cells[*cell]
                 .edges
                 .insert(direction.opposite(), EdgeType::Wall);
         }
@@ -415,7 +494,7 @@ fn get_random_uninitialized_direction(active_cell: &Cell) -> MapDirection {
 }
 
 fn adjust_in_direction(active_coord: &Coords, direction: &MapDirection, map: &Map) -> Option<Coords> {
-    let edges = &map[get_index_from_coords(&active_coord)].edges;
+    let edges = &map.cells[get_index_from_coords(&active_coord)].edges;
     match direction {
         MapDirection::North => {
             if active_coord.y == 0
@@ -464,12 +543,6 @@ fn adjust_in_direction(active_coord: &Coords, direction: &MapDirection, map: &Ma
     }
 }
 
-fn contains_coords(coords: &Coords) -> bool {
-    if coords.x >= WIDTH || coords.y >= HEIGHT {
-        return false;
-    }
-    return true;
-}
 
 pub fn generate_map_state() -> MapState {
     return MapState {
@@ -478,15 +551,8 @@ pub fn generate_map_state() -> MapState {
     };
 }
 
-pub fn update_map(map: &mut Map) {
-    map[get_index_from_coords(&Coords {
-        x: WIDTH / 2,
-        y: HEIGHT / 2,
-    })] = Cell::no_walls(String::from("grey"))
-}
-
 // Map should only ever be mutated here
-pub async fn register_player (
+pub async fn register_player<'a> (
     mut tx: tokio::sync::mpsc::Sender<PlayerInput>,
     // tx: MapSender,
     user_id: String,
@@ -534,14 +600,6 @@ pub async fn respond_to_player(
     return resp_rx.await.unwrap();
 
     
-}
-
-fn get_player_coords(user_id: String, map_state: &mut MapState) -> Coords {
-    return map_state.player_state.get(&user_id).unwrap().clone();
-}
-
-fn get_explored_cells(map_state: &mut MapState) -> HashMap<usize, Cell> {
-    return map_state.explored_cells.clone();
 }
 
 pub fn get_dimensions() -> (usize, usize) {

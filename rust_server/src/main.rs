@@ -12,9 +12,6 @@ mod map;
 type Result<T> = std::result::Result<T, Rejection>;
 type Clients = Arc<RwLock<HashMap<String, Client>>>;
 
-type MapLock = Arc<RwLock<map::Map>>;
-type MapStateLock = Arc<RwLock<map::MapState>>;
-
 #[derive(Debug, Clone)]
 pub struct Client {
     pub user_id: usize,
