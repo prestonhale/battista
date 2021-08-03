@@ -25,7 +25,7 @@ async fn main() {
 
     let (mut tx, rx) = mpsc::channel(32);
     tokio::spawn(async move{
-        map::map_manager(rx).await;
+        map::map_responder::map_manager(rx).await;
     });
 
     // let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();

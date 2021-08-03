@@ -1146,7 +1146,7 @@ name = "warp-ws-example"
 version = "0.1.0"
 dependencies = [
  "futures",
- "rand 0.7.3",
+ "rand 0.8.4",
  "serde 1.0.126",
  "serde_json",
  "tokio",

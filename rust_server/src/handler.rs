@@ -53,7 +53,7 @@ pub async fn register_handler(body: RegisterRequest, clients: Clients, tx: map::
     register_client(uuid.clone(), user_id, clients).await;
     
     println!("tep");
-    let response = map::register_player(tx, user_id.to_string()).await;
+    let response = map::map_responder::register_player(tx, user_id.to_string()).await;
     println!("tep");
     let (width, height) = map::get_dimensions();
     println!("tep");

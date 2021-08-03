@@ -93,7 +93,7 @@ async fn client_msg(
     let client_lock = clients.read().await;
     let user_id = client_lock.get(&id.to_string()).unwrap().user_id.clone();
 
-    let response = map::respond_to_player(tx, user_id.to_string(), user_input.input).await;
+    let response = map::map_responder::respond_to_player(tx, user_id.to_string(), user_input.input).await;
     if let Some(ref some_response) = response {
         // Message is sent even on "failed" moves
         clients.read().await
