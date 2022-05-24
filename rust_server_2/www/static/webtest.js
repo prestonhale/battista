@@ -2,7 +2,7 @@
 let discoveredRooms = [];
 let width;
 let height;
-let roomSize = 20;
+let roomSize = 12;
 let wallWidth = roomSize/10;
 let state = {player_position: {x: 0, y: 0}};
 let user_id;
@@ -39,17 +39,222 @@ function submit(username){
         height = data.height;
         width = data.width;
 
-        let canvas = document.getElementById('game');
-        canvas.height = height * roomSize;
-        canvas.width = width * roomSize;
+        // let canvas = document.getElementById('game');
+        // canvas.height = height * roomSize;
+        // canvas.width = width * roomSize;
 
         console.log(`User id 1 registered with websocket uuid: ${data.id}`);
 
+        // RENDERER =============================================
+        const renderer = {
+            char_width: 10 * 3,
+            char_height: 12 * 3,
+            canvas: document.getElementById('game'),
+            setFont: setFont,
+            start: start,
+            drawBackground: drawBackground,
+            drawPlayer: drawPlayer,
+            drawOtherPlayers: drawOtherPlayers,
+            drawRoom: drawRoom,
+            drawWalls: drawWalls,
+        }
+
+        function start() {
+            this.canvas.height = height * this.char_height;
+            this.canvas.width = width * this.char_width;
+        }
+
+        function setFont() {
+            this.font = new Image(320, 96)
+            this.font.src = "font_10_12.png"
+        }
+
+        function drawBackground(canvas){
+            ctx.beginPath();
+            ctx.fillStyle = "black";
+            ctx.fillRect(
+                0, 0,
+                width * this.char_width, 
+                height * this.char_height,
+            );
+            ctx.stroke();
+        }
+
+        function drawRoom(cell){
+            let coords = getCoordsFromIndex(cell.index);
+            let x = coords[0];
+            let y = coords[1];
+
+            let leftX = x * this.char_width;
+            let topY = y * this.char_height;
+
+            ctx.beginPath();
+            if (cell.cell_type == cellTypes.SOIL){
+                image_coords = {x: 16, y: 5};
+            } else if (cell.cell_type == cellTypes.PLANT) {
+                image_coords = {x: 27, y: 7};
+            } else if (cell.cell_type == cellTypes.FLOWER) {
+                image_coords = {x: 23, y: 4};
+            }
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(
+                this.font,
+                image_coords.x * 10, image_coords.y * 12,
+                10, 12,
+                leftX, topY,
+                this.char_width, this.char_height
+            )
+        }
+
+        function drawWalls(cell){
+            let coords = getCoordsFromIndex(cell.index);
+            let x = coords[0];
+            let y = coords[1];
+
+            let leftX = x * this.char_width;
+            let rightX = (x * this.char_width) + this.char_width;
+            let topY = y * this.char_height;
+            let bottomY = (y * this.char_height) + this.char_height;
+
+            ctx.lineWidth=wallWidth;
+
+            ctx.beginPath()
+            ctx.strokeStyle = "brown";
+            if (cell.edges.North == edgeTypes.WALL) {
+                ctx.moveTo(leftX, topY);
+                ctx.lineTo(rightX, topY);
+            };
+
+            if (cell.edges.East == edgeTypes.WALL) {
+                ctx.moveTo(rightX, topY);
+                ctx.lineTo(rightX, bottomY);
+            };
+
+            if (cell.edges.South == edgeTypes.WALL) {
+                ctx.moveTo(rightX, bottomY);
+                ctx.lineTo(leftX, bottomY);
+            };
+
+            if (cell.edges.West == edgeTypes.WALL) {
+                ctx.moveTo(leftX, bottomY);
+                ctx.lineTo(leftX, topY);
+            };
+
+            ctx.stroke();
+        }
+
+
+        function drawPlayer(player_position, player_direction) {
+            // console.log("Rendering player with pos: " + player_position.x + "," + player_position.y + " and direction: " + player_direction);
+            let x = player_position.x;
+            let y = player_position.y;
+
+            let leftX = x * this.char_width;
+            let rightX = (x * this.char_width) + this.char_width;
+            let topY = y * this.char_height;
+            let bottomY = (y * this.char_height) + this.char_height;
+
+            // adjust
+            let shrink = this.char_height/10;
+            player_size = this.char_height - (shrink*2);
+            playerLeftX = leftX + shrink;
+            playerTopY = topY + shrink;
+            playerRightX = rightX - shrink;
+            playerBottomY = bottomY - shrink;
+
+            ctx.beginPath();
+            ctx.fillStyle = "blue";
+            // Body
+            ctx.fillRect(
+                playerLeftX,
+                playerTopY,
+                player_size,
+                player_size,
+            );
+            ctx.stroke();
+
+            // Nose/DirectionIndicator
+            switch (player_direction) {
+                case "North": 
+                    ctx.fillStyle="purple";
+                    ctx.fillRect(
+                        playerLeftX + (player_size/3),
+                        topY,
+                        player_size/3,
+                        player_size/3,
+                    )
+                    break;
+                case "East": 
+                    ctx.fillStyle="purple";
+                    ctx.fillRect(
+                        rightX - (player_size/3),
+                        playerTopY + (player_size/3),
+                        player_size/3,
+                        player_size/3,
+                    )
+                    break;
+                case "South": 
+                    ctx.fillStyle="purple";
+                    ctx.fillRect(
+                        playerLeftX + (player_size/3),
+                        bottomY - (player_size/3),
+                        player_size/3,
+                        player_size/3,
+                    )
+                    break;
+                case "West": 
+                    ctx.fillStyle="purple";
+                    ctx.fillRect(
+                        leftX,
+                        playerTopY + (player_size/3),
+                        player_size/3,
+                        player_size/3,
+                    )
+                    break;
+            }
+            ctx.stroke();
+
+        }
+
+        function drawOtherPlayers() {
+            for (const property in other_players) {
+                let x = other_players[property].x;
+                let y = other_players[property].y;
+
+                let leftX = x * roomSize;
+                let rightX = (x * roomSize) + roomSize;
+                let topY = y * roomSize;
+                let bottomY = (y * roomSize) + roomSize;
+
+                // adjust
+                let shrink = roomSize/10
+                leftX += shrink;
+                topY += shrink;
+                color = "black";
+
+                ctx.beginPath();
+                ctx.fillStyle = color;
+                ctx.fillRect(
+                    leftX,
+                    topY,
+                    roomSize - shrink * 2,
+                    roomSize - shrink * 2,
+                );
+                ctx.stroke();
+            }
+        }
+
+        // =====================================================
         var Game = {};
         Game.fps = 30;
+
+        Game.renderer = renderer;
+        Game.renderer.setFont();
+        Game.renderer.start();
+
         Game.new_input_this_frame = false;
-        Game.state = {}
         Game.socket = new WebSocket(data.url);
+        Game.state = {}
         Game.state.player_position = data.player_position;
         Game.state.player_direction = data.player_direction;
         Game.state.discoveredRooms = []
@@ -142,10 +347,11 @@ function submit(username){
 
             Game.render = function() {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
-                this.state.discoveredRooms.forEach((room) => drawRoom(room));
-                this.state.discoveredRooms.forEach((room) => drawWalls(room));
-                drawPlayer(this.state.player_position, this.state.player_direction);
-                drawOtherPlayers();
+                Game.renderer.drawBackground();
+                this.state.discoveredRooms.forEach((room) => this.renderer.drawRoom(room));
+                this.state.discoveredRooms.forEach((room) => this.renderer.drawWalls(room));
+                this.renderer.drawPlayer(this.state.player_position, this.state.player_direction);
+                this.renderer.drawOtherPlayers();
             }
 
             Game.run = (function() {
@@ -221,179 +427,3 @@ function getCoordsFromIndex(i){
 
 const canvas = document.getElementById('game')
 var ctx = canvas.getContext('2d');
-
-const renderer = {
-    char_width: 10,
-    char_height: 12
-}
-renderer.setFont = setFont;
-renderer.drawPlayer = drawPlayer;
-renderer.drawRoom = drawRoom;
-renderer.drawWalls = drawWalls;
-
-function setFont(self, font) {
-    self.
-}
-
-function drawRoom(cell){
-    let coords = getCoordsFromIndex(cell.index);
-    let x = coords[0];
-    let y = coords[1];
-
-    let leftX = x * roomSize;
-    let topY = y * roomSize;
-
-    ctx.beginPath();
-    if (cell.cell_type == cellTypes.SOIL){
-        ctx.fillStyle = "DarkGoldenRod";
-    } else if (cell.cell_type == cellTypes.PLANT) {
-        ctx.fillStyle = "Green";
-    } else if (cell.cell_type == cellTypes.FLOWER) {
-        ctx.fillStyle = "Red";
-    }
-    ctx.fillRect(
-        leftX,
-        topY,
-        roomSize,
-        roomSize
-    );
-    ctx.stroke();
-}
-
-function drawWalls(cell){
-    let coords = getCoordsFromIndex(cell.index);
-    let x = coords[0];
-    let y = coords[1];
-
-    let leftX = x * roomSize;
-    let rightX = (x * roomSize) + roomSize;
-    let topY = y * roomSize;
-    let bottomY = (y * roomSize) + roomSize;
-
-    ctx.lineWidth=wallWidth;
-
-    ctx.beginPath()
-    ctx.strokeStyle = "brown";
-    if (cell.edges.North == edgeTypes.WALL) {
-        ctx.moveTo(leftX, topY);
-        ctx.lineTo(rightX, topY);
-    };
-
-    if (cell.edges.East == edgeTypes.WALL) {
-        ctx.moveTo(rightX, topY);
-        ctx.lineTo(rightX, bottomY);
-    };
-
-    if (cell.edges.South == edgeTypes.WALL) {
-        ctx.moveTo(rightX, bottomY);
-        ctx.lineTo(leftX, bottomY);
-    };
-
-    if (cell.edges.West == edgeTypes.WALL) {
-        ctx.moveTo(leftX, bottomY);
-        ctx.lineTo(leftX, topY);
-    };
-
-    ctx.stroke();
-}
-
-
-function drawPlayer(player_position, player_direction) {
-    // console.log("Rendering player with pos: " + player_position.x + "," + player_position.y + " and direction: " + player_direction);
-    let x = player_position.x;
-    let y = player_position.y;
-
-    let leftX = x * roomSize;
-    let rightX = (x * roomSize) + roomSize;
-    let topY = y * roomSize;
-    let bottomY = (y * roomSize) + roomSize;
-
-    // adjust
-    let shrink = roomSize/10;
-    player_size = roomSize - (shrink*2);
-    playerLeftX = leftX + shrink;
-    playerTopY = topY + shrink;
-    playerRightX = rightX - shrink;
-    playerBottomY = bottomY - shrink;
-
-    ctx.beginPath();
-    ctx.fillStyle = "blue";
-    // Body
-    ctx.fillRect(
-        playerLeftX,
-        playerTopY,
-        player_size,
-        player_size,
-    );
-    ctx.stroke();
-
-    // Nose/DirectionIndicator
-    switch (player_direction) {
-        case "North": 
-            ctx.fillStyle="purple";
-            ctx.fillRect(
-                playerLeftX + (player_size/3),
-                topY,
-                player_size/3,
-                player_size/3,
-            )
-            break;
-        case "East": 
-            ctx.fillStyle="purple";
-            ctx.fillRect(
-                rightX - (player_size/3),
-                playerTopY + (player_size/3),
-                player_size/3,
-                player_size/3,
-            )
-            break;
-        case "South": 
-            ctx.fillStyle="purple";
-            ctx.fillRect(
-                playerLeftX + (player_size/3),
-                bottomY - (player_size/3),
-                player_size/3,
-                player_size/3,
-            )
-            break;
-        case "West": 
-            ctx.fillStyle="purple";
-            ctx.fillRect(
-                leftX,
-                playerTopY + (player_size/3),
-                player_size/3,
-                player_size/3,
-            )
-            break;
-    }
-    ctx.stroke();
-
-}
-
-function drawOtherPlayers() {
-    for (const property in other_players) {
-        let x = other_players[property].x;
-        let y = other_players[property].y;
-
-        let leftX = x * roomSize;
-        let rightX = (x * roomSize) + roomSize;
-        let topY = y * roomSize;
-        let bottomY = (y * roomSize) + roomSize;
-
-        // adjust
-        let shrink = roomSize/10
-        leftX += shrink;
-        topY += shrink;
-        color = "black";
-
-        ctx.beginPath();
-        ctx.fillStyle = color;
-        ctx.fillRect(
-            leftX,
-            topY,
-            roomSize - shrink * 2,
-            roomSize - shrink * 2,
-        );
-        ctx.stroke();
-    }
-}
